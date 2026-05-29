@@ -41,18 +41,26 @@ class VehicleSample:
 class FleetSource(Protocol):
     """Produces the current fleet state on demand.
 
-    Implementations may be stateful (the mock advances a simulation) or thin
-    relays (Traccar polls live data); callers only depend on this interface.
-    The split between :meth:`advance` (produce the next state) and
-    :meth:`snapshot` (read the current state) lets the streamer drive updates on
-    a fixed cadence without re-fetching on every REST read.
+    Implementations may be pull-based (the mock advances a simulation, the REST
+    relay polls on a tick) or push-based (a WebSocket relay streams updates in
+    the background). Callers only depend on this interface:
+
+    - :meth:`start` / :meth:`aclose` bracket the source's lifetime, letting
+      push sources spin up and tear down a background consumer task.
+    - :meth:`advance` lets pull sources produce their next state on a fixed
+      cadence; push sources keep themselves fresh and treat it as a no-op.
+    - :meth:`snapshot` reads the current state without any I/O.
     """
+
+    async def start(self) -> None:
+        """Begin streaming and/or prime the first snapshot. No-op for the mock."""
+        ...
 
     def advance(self, dt_seconds: float, now: datetime) -> None:
         """Produce the next state: step the simulation or poll upstream.
 
         ``dt_seconds`` and ``now`` are only meaningful to time-based simulations;
-        live relays ignore them and simply re-fetch.
+        push-based relays keep themselves fresh and ignore this call.
         """
         ...
 
@@ -60,6 +68,6 @@ class FleetSource(Protocol):
         """Return the latest sample for every vehicle in the fleet."""
         ...
 
-    def close(self) -> None:
-        """Release any resources (e.g. HTTP connections). No-op for the mock."""
+    async def aclose(self) -> None:
+        """Stop any background work and release resources. No-op for the mock."""
         ...

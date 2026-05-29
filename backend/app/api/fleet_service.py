@@ -50,6 +50,10 @@ class FleetService:
         client = TraccarClient(base_url=base_url, username=username, password=password)
         return cls(TraccarSource(client))
 
+    async def start(self) -> None:
+        """Start the underlying source (e.g. begin a live stream)."""
+        await self._source.start()
+
     def advance(self, dt_seconds: float, now: datetime | None = None) -> None:
         """Advance the source: step the simulation or poll the upstream feed."""
         self._source.advance(dt_seconds, now or _utcnow())
@@ -72,9 +76,9 @@ class FleetService:
     def alerts(self) -> list[AlertOut]:
         return [alert for vehicle in self.vehicles() for alert in vehicle.alerts]
 
-    def close(self) -> None:
-        """Release any resources held by the underlying source."""
-        self._source.close()
+    async def aclose(self) -> None:
+        """Stop the underlying source and release any resources it holds."""
+        await self._source.aclose()
 
     @staticmethod
     def _config_for(vehicle: FleetVehicle) -> DetectionConfig:

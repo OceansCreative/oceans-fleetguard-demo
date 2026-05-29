@@ -44,12 +44,13 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        await service.start()
         streamer.start()
         try:
             yield
         finally:
             await streamer.stop()
-            service.close()
+            await service.aclose()
 
     app = FastAPI(title="FleetGuard API", version=__version__, lifespan=lifespan)
 

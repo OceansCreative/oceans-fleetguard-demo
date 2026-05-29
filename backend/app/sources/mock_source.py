@@ -14,6 +14,9 @@ class MockSource:
     def __init__(self, fleet: MockFleet) -> None:
         self._fleet = fleet
 
+    async def start(self) -> None:
+        """No-op; the simulation is ready as soon as it is constructed."""
+
     def advance(self, dt_seconds: float, now: datetime) -> None:
         """Step the simulation forward by ``dt_seconds``."""
         self._fleet.step(dt_seconds, now)
@@ -21,5 +24,5 @@ class MockSource:
     def snapshot(self) -> list[VehicleSample]:
         return self._fleet.samples()
 
-    def close(self) -> None:  # noqa: D401 - nothing to release for the simulation
+    async def aclose(self) -> None:  # noqa: D401 - nothing to release
         """No-op; the simulation holds no external resources."""

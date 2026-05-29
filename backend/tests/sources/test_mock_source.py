@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 from app.mock.generator import MockFleet
@@ -23,7 +24,8 @@ def test_advance_steps_the_underlying_simulation() -> None:
     assert all(s.previous is not None for s in source.snapshot())
 
 
-def test_close_is_a_harmless_no_op() -> None:
+def test_lifecycle_hooks_are_harmless_no_ops() -> None:
     source = MockSource(MockFleet(start_time=START))
-    source.close()  # must not raise
+    asyncio.run(source.start())
+    asyncio.run(source.aclose())  # must not raise
     assert source.snapshot()  # still usable

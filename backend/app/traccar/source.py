@@ -28,6 +28,9 @@ class TraccarSource:
         self._samples: dict[str, VehicleSample] = {}
         self._polled = False
 
+    async def start(self) -> None:
+        """No-op; the first poll happens lazily on the first read or tick."""
+
     def advance(self, dt_seconds: float, now: datetime) -> None:
         """Poll Traccar for fresh data. ``dt_seconds``/``now`` are unused here."""
         self._poll()
@@ -39,7 +42,7 @@ class TraccarSource:
             self._poll()
         return list(self._samples.values())
 
-    def close(self) -> None:
+    async def aclose(self) -> None:
         self._client.close()
 
     def _poll(self) -> None:

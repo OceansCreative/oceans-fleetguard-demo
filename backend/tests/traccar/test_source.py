@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import httpx
@@ -24,7 +25,7 @@ def test_snapshot_lazily_polls_on_first_read() -> None:
     samples = source.snapshot()
     assert {s.vehicle.id for s in samples} == {"1", "2"}
     assert all(s.previous is None for s in samples)  # no history on first poll
-    source.close()
+    asyncio.run(source.aclose())
 
 
 def test_consecutive_polls_carry_the_previous_position_forward() -> None:
@@ -48,7 +49,7 @@ def test_consecutive_polls_carry_the_previous_position_forward() -> None:
     assert van.previous is not None
     assert van.previous.course_deg == 1.0
     assert van.current.course_deg == 2.0
-    source.close()
+    asyncio.run(source.aclose())
 
 
 def test_failed_poll_keeps_the_last_good_snapshot() -> None:
@@ -68,4 +69,4 @@ def test_failed_poll_keeps_the_last_good_snapshot() -> None:
     state["fail"] = True
     source.advance(2.0, NOW)  # upstream now failing
     assert len(source.snapshot()) == 2  # last good snapshot retained
-    source.close()
+    asyncio.run(source.aclose())
