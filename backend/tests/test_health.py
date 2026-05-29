@@ -12,8 +12,10 @@ def _client(*, mock_mode: bool) -> TestClient:
         mock_mode=mock_mode,
         cors_origins=("http://localhost:3000",),
         traccar_base_url="http://traccar:8082",
+        traccar_ws_url="ws://traccar:8082/api/socket",
         traccar_username="",
         traccar_password="",
+        traccar_transport="ws",
     )
     return TestClient(create_app(settings))
 

@@ -17,7 +17,7 @@ import asyncio
 import contextlib
 import json
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterable, Callable
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 
@@ -28,7 +28,9 @@ from app.traccar.normalize import apply_positions, roster_from_devices
 logger = logging.getLogger(__name__)
 
 # A factory that opens a WebSocket and yields an async stream of text frames.
-Frames = AsyncIterator[str | bytes]
+# ``AsyncIterable`` (not ``AsyncIterator``) so a websockets ClientConnection,
+# which is iterable via ``async for`` but is not itself an iterator, qualifies.
+Frames = AsyncIterable[str | bytes]
 Connect = Callable[[], AbstractAsyncContextManager[Frames]]
 
 _RECONNECT_DELAY_S = 3.0

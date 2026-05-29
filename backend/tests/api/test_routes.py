@@ -16,8 +16,10 @@ def _settings(*, mock_mode: bool = True) -> Settings:
         mock_mode=mock_mode,
         cors_origins=("http://localhost:3000",),
         traccar_base_url="http://traccar:8082",
+        traccar_ws_url="ws://traccar:8082/api/socket",
         traccar_username="",
         traccar_password="",
+        traccar_transport="ws",
     )
 
 

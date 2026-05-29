@@ -49,3 +49,31 @@ def test_non_array_payload_is_rejected() -> None:
     client = build_client(handler)
     with pytest.raises(ValueError):
         client.fetch_devices()
+
+
+def test_session_cookie_posts_credentials_and_returns_jsessionid() -> None:
+    captured: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/session":
+            captured["body"] = request.content.decode()
+            return httpx.Response(
+                200,
+                headers={"Set-Cookie": "JSESSIONID=abc123; Path=/"},
+                json={"id": 1},
+            )
+        return httpx.Response(404)
+
+    client = build_client(handler)
+    cookie = client.session_cookie()
+
+    assert cookie == "JSESSIONID=abc123"
+    assert "email=demo" in captured["body"]
+    assert "password=secret" in captured["body"]
+
+
+def test_session_cookie_is_empty_when_no_cookie_is_set() -> None:
+    def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": 1})
+
+    assert build_client(handler).session_cookie() == ""

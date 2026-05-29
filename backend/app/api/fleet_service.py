@@ -15,7 +15,9 @@ from app.mock.generator import MockFleet
 from app.sources.base import FleetSource, FleetVehicle
 from app.sources.mock_source import MockSource
 from app.traccar.client import TraccarClient
+from app.traccar.connect import build_ws_connector
 from app.traccar.source import TraccarSource
+from app.traccar.stream_source import TraccarStreamSource
 
 _BUSINESS_HOURS = BusinessHours(
     operating_days=frozenset({0, 1, 2, 3, 4}),
@@ -46,9 +48,18 @@ class FleetService:
 
     @classmethod
     def traccar(cls, base_url: str, username: str, password: str) -> FleetService:
-        """Relay a live Traccar server."""
+        """Relay a live Traccar server by polling its REST API on each tick."""
         client = TraccarClient(base_url=base_url, username=username, password=password)
         return cls(TraccarSource(client))
+
+    @classmethod
+    def traccar_stream(
+        cls, base_url: str, ws_url: str, username: str, password: str
+    ) -> FleetService:
+        """Relay a live Traccar server by streaming its WebSocket feed."""
+        client = TraccarClient(base_url=base_url, username=username, password=password)
+        connect = build_ws_connector(client, ws_url)
+        return cls(TraccarStreamSource(client, connect))
 
     async def start(self) -> None:
         """Start the underlying source (e.g. begin a live stream)."""

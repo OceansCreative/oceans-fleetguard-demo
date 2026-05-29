@@ -32,23 +32,33 @@ class Settings:
             relaying a live Traccar instance.
         cors_origins: Allowed CORS origins for the frontend.
         traccar_base_url: Base URL of the upstream Traccar server.
-        traccar_username: Traccar account used for REST authentication.
+        traccar_ws_url: WebSocket URL of the Traccar live feed (``/api/socket``).
+        traccar_username: Traccar account (email) used for authentication.
         traccar_password: Password for ``traccar_username``.
+        traccar_transport: How to relay live data — ``"ws"`` streams over the
+            WebSocket (default), ``"rest"`` polls the REST API on each tick.
     """
 
     mock_mode: bool
     cors_origins: tuple[str, ...]
     traccar_base_url: str
+    traccar_ws_url: str
     traccar_username: str
     traccar_password: str
+    traccar_transport: str
 
     @classmethod
     def from_env(cls) -> Settings:
         """Build settings from the process environment."""
+        base_url = os.environ.get("TRACCAR_BASE_URL", "http://traccar:8082")
         return cls(
             mock_mode=_get_bool("MOCK_MODE", default=True),
             cors_origins=_get_origins("CORS_ORIGINS", "http://localhost:3000"),
-            traccar_base_url=os.environ.get("TRACCAR_BASE_URL", "http://traccar:8082"),
+            traccar_base_url=base_url,
+            traccar_ws_url=os.environ.get(
+                "TRACCAR_WS_URL", "ws://traccar:8082/api/socket"
+            ),
             traccar_username=os.environ.get("TRACCAR_USERNAME", ""),
             traccar_password=os.environ.get("TRACCAR_PASSWORD", ""),
+            traccar_transport=os.environ.get("TRACCAR_TRANSPORT", "ws").strip().lower(),
         )

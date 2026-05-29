@@ -16,11 +16,22 @@ from app.config import Settings
 
 
 def _build_service(settings: Settings) -> FleetService:
-    """Pick the data source: the mock simulation or a live Traccar relay."""
+    """Pick the data source: the mock simulation or a live Traccar relay.
+
+    A live relay streams over the WebSocket by default; set
+    ``TRACCAR_TRANSPORT=rest`` to fall back to REST polling.
+    """
     if settings.mock_mode:
         return FleetService.mock()
-    return FleetService.traccar(
+    if settings.traccar_transport == "rest":
+        return FleetService.traccar(
+            base_url=settings.traccar_base_url,
+            username=settings.traccar_username,
+            password=settings.traccar_password,
+        )
+    return FleetService.traccar_stream(
         base_url=settings.traccar_base_url,
+        ws_url=settings.traccar_ws_url,
         username=settings.traccar_username,
         password=settings.traccar_password,
     )

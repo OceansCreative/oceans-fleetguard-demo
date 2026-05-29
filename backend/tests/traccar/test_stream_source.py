@@ -6,6 +6,7 @@ import asyncio
 import json
 from typing import Any
 
+import httpx
 from app.traccar.normalize import roster_from_devices
 from app.traccar.stream_source import TraccarStreamSource
 
@@ -135,3 +136,33 @@ def test_run_reconnects_after_a_stream_error() -> None:
 
     assert asyncio.run(scenario()) == ["Van 01"]
     assert state["attempts"] >= 2  # failed once, then reconnected
+
+
+def test_aclose_before_start_is_safe() -> None:
+    source = TraccarStreamSource(
+        build_client(static_handler([DEVICE_VAN], [])), connect=lambda: _FakeFrames([])
+    )
+    asyncio.run(source.aclose())  # no background task yet; must not raise
+    assert source.snapshot() == []
+
+
+def test_start_tolerates_a_failed_roster_fetch() -> None:
+    park = asyncio.Event()
+
+    def failing_devices(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, json={"error": "down"})
+
+    async def scenario() -> list[str]:
+        source = TraccarStreamSource(
+            build_client(failing_devices),
+            connect=lambda: _FakeFrames([_frame([POSITION_VAN])], park=park),
+        )
+        await source.start()  # roster fetch fails internally, but start succeeds
+        for _ in range(5):
+            await asyncio.sleep(0)
+        ids = [s.vehicle.id for s in source.snapshot()]
+        await source.aclose()
+        return ids
+
+    # Position still surfaces via the fallback identity despite the empty roster.
+    assert asyncio.run(scenario()) == ["1"]

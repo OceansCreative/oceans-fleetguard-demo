@@ -27,11 +27,29 @@ class TraccarClient:
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         client: httpx.Client | None = None,
     ) -> None:
+        self._username = username
+        self._password = password
         self._client = client or httpx.Client(
             base_url=base_url.rstrip("/"),
             auth=(username, password),
             timeout=timeout_s,
         )
+
+    def session_cookie(self) -> str:
+        """Authenticate and return the session cookie for the WebSocket feed.
+
+        Traccar's ``/api/socket`` only accepts a logged-in session, so we POST
+        the credentials to ``/api/session`` (which sets ``JSESSIONID``) and hand
+        the cookie back as a ``Cookie`` header value. The account name is sent as
+        Traccar's ``email`` field.
+        """
+        response = self._client.post(
+            "/api/session",
+            data={"email": self._username, "password": self._password},
+        )
+        response.raise_for_status()
+        session_id = self._client.cookies.get("JSESSIONID")
+        return f"JSESSIONID={session_id}" if session_id else ""
 
     def fetch_devices(self) -> list[dict[str, Any]]:
         """Return all devices known to Traccar (``GET /api/devices``)."""
