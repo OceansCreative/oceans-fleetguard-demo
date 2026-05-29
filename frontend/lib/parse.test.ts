@@ -15,6 +15,7 @@ const sample: Vehicle = {
     ignition_on: true,
     recorded_at: "2026-05-27T12:00:00Z",
   },
+  geofence: null,
   alerts: [],
 };
 

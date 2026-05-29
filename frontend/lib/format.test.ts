@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { formatSpeedKmh, highestSeverity, sortByUrgency } from "./format";
+import {
+  formatDistanceKm,
+  formatSpeedKmh,
+  highestSeverity,
+  sortByUrgency,
+} from "./format";
 import type { Vehicle } from "./types";
 
 function vehicle(
@@ -20,6 +25,7 @@ function vehicle(
       ignition_on: true,
       recorded_at: "2026-05-27T12:00:00Z",
     },
+    geofence: null,
     alerts: severities.map((severity) => ({
       type: "abnormal_speed",
       severity,
@@ -42,6 +48,19 @@ describe("formatSpeedKmh", () => {
     expect(formatSpeedKmh(-1)).toBe("—");
     expect(formatSpeedKmh(Number.NaN)).toBe("—");
     expect(formatSpeedKmh(Number.POSITIVE_INFINITY)).toBe("—");
+  });
+});
+
+describe("formatDistanceKm", () => {
+  it("formats meters as km to one decimal", () => {
+    expect(formatDistanceKm(3000)).toBe("3.0 km");
+    expect(formatDistanceKm(500)).toBe("0.5 km");
+    expect(formatDistanceKm(0)).toBe("0.0 km");
+  });
+
+  it("returns an em dash for negative or non-finite input", () => {
+    expect(formatDistanceKm(-1)).toBe("—");
+    expect(formatDistanceKm(Number.NaN)).toBe("—");
   });
 });
 

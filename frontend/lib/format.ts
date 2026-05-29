@@ -22,6 +22,14 @@ export function formatSpeedKmh(metersPerSecond: number): string {
   return `${Math.round(metersPerSecond * MS_TO_KMH)} km/h`;
 }
 
+/** Format a distance given in meters as a "N.N km" string. */
+export function formatDistanceKm(meters: number): string {
+  if (!Number.isFinite(meters) || meters < 0) {
+    return EM_DASH;
+  }
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
 /**
  * The most urgent severity among a vehicle's alerts, or `null` when it has
  * none. Used to drive marker color and list sorting.

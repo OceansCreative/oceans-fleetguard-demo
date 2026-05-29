@@ -1,4 +1,4 @@
-import { formatSpeedKmh } from "@/lib/format";
+import { formatDistanceKm, formatSpeedKmh } from "@/lib/format";
 import type { Vehicle } from "@/lib/types";
 import { AlertBadge } from "@/components/AlertBadge";
 
@@ -45,6 +45,12 @@ export function VehicleDetail({
         label="Last update"
         value={new Date(position.recorded_at).toLocaleTimeString()}
       />
+      {vehicle.geofence !== null && (
+        <Row
+          label="Geofence"
+          value={`${formatDistanceKm(vehicle.geofence.radius_m)} radius`}
+        />
+      )}
 
       <h3 style={{ margin: "0.4rem 0 0" }}>Alerts</h3>
       {vehicle.alerts.length === 0 ? (

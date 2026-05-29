@@ -24,11 +24,19 @@ export interface VehiclePosition {
   recorded_at: string;
 }
 
+/** A vehicle's circular geofence (center + radius in meters). */
+export interface VehicleGeofence {
+  lat: number;
+  lon: number;
+  radius_m: number;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
   plate: string;
   position: VehiclePosition;
+  geofence: VehicleGeofence | null;
   alerts: VehicleAlert[];
 }
 

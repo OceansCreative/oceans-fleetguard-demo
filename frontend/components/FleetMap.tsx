@@ -1,7 +1,13 @@
 "use client";
 
 import L from "leaflet";
-import { CircleMarker, MapContainer, Popup, TileLayer } from "react-leaflet";
+import {
+  Circle,
+  CircleMarker,
+  MapContainer,
+  Popup,
+  TileLayer,
+} from "react-leaflet";
 
 import { MAP_CENTER, MAP_ZOOM } from "@/lib/config";
 import { formatSpeedKmh, highestSeverity } from "@/lib/format";
@@ -23,6 +29,8 @@ export function FleetMap({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
+  const selectedGeofence =
+    vehicles.find((vehicle) => vehicle.id === selectedId)?.geofence ?? null;
   return (
     <MapContainer
       center={MAP_CENTER}
@@ -33,6 +41,20 @@ export function FleetMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      {selectedGeofence !== null && (
+        // The allowed area the geofence rule checks the selected vehicle against.
+        <Circle
+          center={[selectedGeofence.lat, selectedGeofence.lon]}
+          radius={selectedGeofence.radius_m}
+          pathOptions={{
+            color: "#2563eb",
+            weight: 1,
+            dashArray: "6 6",
+            fillColor: "#3b82f6",
+            fillOpacity: 0.06,
+          }}
+        />
+      )}
       {vehicles.map((vehicle) => {
         const severity = highestSeverity(vehicle);
         const color = severity === null ? CALM_COLOR : SEVERITY_COLOR[severity];
