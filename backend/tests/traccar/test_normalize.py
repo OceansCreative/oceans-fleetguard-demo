@@ -5,10 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from app.sources.base import VehicleSample
 from app.traccar.normalize import (
+    apply_positions,
     knots_to_mps,
     merge_readings,
     parse_time,
+    roster_from_devices,
     to_position,
     to_vehicle,
 )
@@ -154,3 +157,56 @@ def test_to_position_coerces_string_and_garbage_numeric_fields() -> None:
     assert position.point.lat == 35.5
     assert position.point.lon == 0.0
     assert position.speed_mps == pytest.approx(knots_to_mps(10.0))
+
+
+def test_roster_from_devices_keys_identities_by_device_id() -> None:
+    roster = roster_from_devices(DEVICES)
+    assert set(roster) == {"1", "2", "3"}
+    assert roster["1"].name == "Van 01"
+    assert roster["2"].name == "yasugi-002"  # blank name -> uniqueId
+
+
+def test_apply_positions_seeds_then_tracks_previous() -> None:
+    roster = roster_from_devices([DEVICE_VAN])
+
+    first = apply_positions(roster, {}, [POSITION_VAN])
+    assert set(first) == {"1"}
+    assert first["1"].previous is None  # first sighting has no history
+    assert first["1"].vehicle.name == "Van 01"
+
+    moved = {**POSITION_VAN, "course": 123.0, "fixTime": "2026-05-29T03:05:00Z"}
+    second = apply_positions(roster, first, [moved])
+    assert second["1"].current.course_deg == 123.0
+    assert second["1"].previous is not None
+    assert second["1"].previous.course_deg == 90.0
+
+
+def test_apply_positions_leaves_untouched_devices_in_place() -> None:
+    roster = roster_from_devices(DEVICES)
+    seeded = apply_positions(roster, {}, POSITIONS)  # van + truck
+    # A frame that only mentions the van must not drop the truck.
+    updated = apply_positions(roster, seeded, [{**POSITION_VAN, "course": 45.0}])
+    assert set(updated) == {"1", "2"}
+    assert updated["2"] is seeded["2"]
+
+
+def test_apply_positions_does_not_mutate_the_input_cache() -> None:
+    roster = roster_from_devices([DEVICE_VAN])
+    before: dict[str, VehicleSample] = {}
+    apply_positions(roster, before, [POSITION_VAN])
+    assert before == {}  # the input mapping is left untouched
+
+
+def test_apply_positions_falls_back_for_unknown_devices() -> None:
+    # Position arrives before the roster knows the device.
+    result = apply_positions({}, {}, [POSITION_VAN])
+    assert result["1"].vehicle.id == "1"
+    assert result["1"].vehicle.name == "1"
+    assert result["1"].vehicle.home is None
+
+
+def test_apply_positions_skips_malformed_or_orphan_records() -> None:
+    roster = roster_from_devices([DEVICE_VAN])
+    no_device = {**POSITION_VAN, "deviceId": None}
+    no_time = {"deviceId": 1, "latitude": 1.0, "longitude": 2.0, "speed": 0.0}
+    assert apply_positions(roster, {}, [no_device, no_time]) == {}

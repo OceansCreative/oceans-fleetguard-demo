@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Any
 
 from app.detection.models import GeoPoint, Position
-from app.sources.base import FleetVehicle
+from app.sources.base import FleetVehicle, VehicleSample
 
 # Traccar reports speed over ground in knots; the rest of the app works in m/s.
 _KNOTS_TO_MPS = 0.514444
@@ -156,3 +156,49 @@ def merge_readings(
             continue
         readings.append(DeviceReading(vehicle=to_vehicle(raw_device), position=matched))
     return readings
+
+
+def roster_from_devices(
+    devices: Sequence[Mapping[str, Any]],
+) -> dict[str, FleetVehicle]:
+    """Build a ``device id -> identity`` lookup from Traccar's device roster."""
+    return {str(raw.get("id")): to_vehicle(raw) for raw in devices}
+
+
+def _fallback_vehicle(device_id: str) -> FleetVehicle:
+    """Identity for a position whose device is not (yet) in the roster."""
+    return FleetVehicle(id=device_id, name=device_id, plate="", home=None)
+
+
+def apply_positions(
+    roster: Mapping[str, FleetVehicle],
+    samples: Mapping[str, VehicleSample],
+    positions: Sequence[Mapping[str, Any]],
+) -> dict[str, VehicleSample]:
+    """Merge a batch of streamed positions into the current sample cache.
+
+    Traccar's WebSocket pushes positions incrementally (only for devices that
+    just reported), so — unlike the REST snapshot — this updates the cache in
+    place: each incoming position becomes the new ``current`` and the prior
+    ``current`` is carried forward as ``previous``. Devices not mentioned in the
+    batch keep their last sample; positions for an unknown device get a minimal
+    fallback identity until the roster catches up. Returns a new dict, leaving
+    the input untouched.
+    """
+    updated = dict(samples)
+    for raw in positions:
+        device_id = raw.get("deviceId")
+        if device_id is None:
+            continue
+        try:
+            position = to_position(raw)
+        except ValueError:
+            continue
+        key = str(device_id)
+        previous = updated.get(key)
+        updated[key] = VehicleSample(
+            vehicle=roster.get(key) or _fallback_vehicle(key),
+            current=position,
+            previous=previous.current if previous is not None else None,
+        )
+    return updated
