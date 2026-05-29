@@ -15,15 +15,25 @@ from app.api.stream import FleetStreamer
 from app.config import Settings
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def _build_service(settings: Settings) -> FleetService:
+    """Pick the data source for the fleet."""
+    return FleetService.mock() if settings.mock_mode else FleetService.empty()
+
+
+def create_app(
+    settings: Settings | None = None, *, service: FleetService | None = None
+) -> FastAPI:
     """Create and configure the FleetGuard FastAPI application.
 
     Args:
         settings: Optional settings override; defaults to environment-derived
             settings. Injecting settings keeps the app easy to test.
+        service: Optional pre-built fleet service. Injecting one lets tests
+            exercise the live-relay wiring with a fake upstream instead of a
+            real Traccar server.
     """
     resolved = settings or Settings.from_env()
-    service = FleetService.mock() if resolved.mock_mode else FleetService.empty()
+    service = service or _build_service(resolved)
     streamer = FleetStreamer(service)
 
     @asynccontextmanager
@@ -33,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             yield
         finally:
             await streamer.stop()
+            service.close()
 
     app = FastAPI(title="FleetGuard API", version=__version__, lifespan=lifespan)
 

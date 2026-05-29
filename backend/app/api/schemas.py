@@ -7,7 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.detection.models import Alert, Position
-from app.mock.generator import VehicleSample
+from app.sources.base import VehicleSample
 
 
 class PositionOut(BaseModel):

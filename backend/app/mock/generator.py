@@ -14,6 +14,11 @@ from datetime import datetime
 
 from app.detection.geo import destination_point, haversine_m
 from app.detection.models import GeoPoint, Position
+from app.sources.base import FleetVehicle, VehicleSample
+
+# A mock vehicle is just a fleet vehicle whose home (geofence anchor) is always
+# known, so we reuse the source-agnostic identity type directly.
+MockVehicle = FleetVehicle
 
 # Anchor points (approximate town centers) the mock fleet patrols around.
 MATSUE = GeoPoint(lat=35.4723, lon=133.0505)
@@ -24,25 +29,6 @@ YONAGO = GeoPoint(lat=35.4281, lon=133.3311)
 _LEASH_M = 2_500.0
 _MAX_TURN_DEG = 25.0
 _CRUISE_SPEED_MPS = 12.0
-
-
-@dataclass(frozen=True, slots=True)
-class MockVehicle:
-    """Static identity of a simulated vehicle (mock data only)."""
-
-    id: str
-    name: str
-    plate: str
-    home: GeoPoint
-
-
-@dataclass(frozen=True, slots=True)
-class VehicleSample:
-    """A simulated vehicle's current and previous position samples."""
-
-    vehicle: MockVehicle
-    current: Position
-    previous: Position | None
 
 
 DEFAULT_FLEET: tuple[MockVehicle, ...] = (
@@ -60,6 +46,7 @@ _SUSPICIOUS_ID = "v-005"
 @dataclass
 class _Runtime:
     vehicle: MockVehicle
+    home: GeoPoint
     heading_deg: float
     current: Position
     previous: Position | None
@@ -89,6 +76,8 @@ class MockFleet:
         self._runtime = [self._spawn(v, start_time) for v in vehicles]
 
     def _spawn(self, vehicle: MockVehicle, start_time: datetime) -> _Runtime:
+        if vehicle.home is None:  # pragma: no cover - mock vehicles always set home
+            raise ValueError(f"mock vehicle {vehicle.id} is missing a home anchor")
         heading = self._rng.uniform(0.0, 360.0)
         current = Position(
             point=vehicle.home,
@@ -98,7 +87,11 @@ class MockFleet:
             recorded_at=start_time,
         )
         return _Runtime(
-            vehicle=vehicle, heading_deg=heading, current=current, previous=None
+            vehicle=vehicle,
+            home=vehicle.home,
+            heading_deg=heading,
+            current=current,
+            previous=None,
         )
 
     def step(self, dt_seconds: float, now: datetime) -> None:
@@ -134,7 +127,7 @@ class MockFleet:
         )
 
     def _next_heading(self, runtime: _Runtime, suspicious: bool) -> float:
-        home = runtime.vehicle.home
+        home = runtime.home
         here = runtime.current.point
         if suspicious:
             # Steadily flee from home to also trip the geofence rule.

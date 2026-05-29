@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-from app.mock.generator import (
-    DEFAULT_FLEET,
-    MockFleet,
-    MockVehicle,
-    VehicleSample,
-)
+from app.mock.generator import DEFAULT_FLEET, MockFleet, MockVehicle
+from app.sources.base import VehicleSample
 
 __all__ = ["DEFAULT_FLEET", "MockFleet", "MockVehicle", "VehicleSample"]
