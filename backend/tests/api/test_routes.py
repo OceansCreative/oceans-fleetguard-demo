@@ -37,7 +37,11 @@ def test_list_vehicles_returns_the_mock_fleet() -> None:
 def test_get_known_vehicle() -> None:
     response = _client().get("/api/vehicles/v-001")
     assert response.status_code == 200
-    assert response.json()["id"] == "v-001"
+    body = response.json()
+    assert body["id"] == "v-001"
+    # The mock fleet exposes each vehicle's geofence (center + radius).
+    assert body["geofence"]["radius_m"] == 3_000.0
+    assert "lat" in body["geofence"] and "lon" in body["geofence"]
 
 
 def test_get_unknown_vehicle_is_404() -> None:

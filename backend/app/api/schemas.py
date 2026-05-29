@@ -6,7 +6,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from app.detection.models import Alert, Position
+from app.detection.models import Alert, CircularGeofence, Position
 from app.sources.base import VehicleSample
 
 
@@ -32,6 +32,22 @@ class PositionOut(BaseModel):
         )
 
 
+class GeofenceOut(BaseModel):
+    """A vehicle's circular geofence (center + radius) for API responses."""
+
+    lat: float
+    lon: float
+    radius_m: float
+
+    @classmethod
+    def from_geofence(cls, geofence: CircularGeofence) -> GeofenceOut:
+        return cls(
+            lat=geofence.center.lat,
+            lon=geofence.center.lon,
+            radius_m=geofence.radius_m,
+        )
+
+
 class AlertOut(BaseModel):
     """A fired detection alert for API responses."""
 
@@ -51,14 +67,19 @@ class VehicleOut(BaseModel):
     name: str
     plate: str
     position: PositionOut
+    geofence: GeofenceOut | None
     alerts: list[AlertOut]
 
     @classmethod
     def from_sample(cls, sample: VehicleSample, alerts: list[Alert]) -> VehicleOut:
+        geofence = sample.vehicle.geofence
         return cls(
             id=sample.vehicle.id,
             name=sample.vehicle.name,
             plate=sample.vehicle.plate,
             position=PositionOut.from_position(sample.current),
+            geofence=(
+                GeofenceOut.from_geofence(geofence) if geofence is not None else None
+            ),
             alerts=[AlertOut.from_alert(alert) for alert in alerts],
         )
