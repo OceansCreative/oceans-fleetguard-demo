@@ -16,8 +16,14 @@ from app.config import Settings
 
 
 def _build_service(settings: Settings) -> FleetService:
-    """Pick the data source for the fleet."""
-    return FleetService.mock() if settings.mock_mode else FleetService.empty()
+    """Pick the data source: the mock simulation or a live Traccar relay."""
+    if settings.mock_mode:
+        return FleetService.mock()
+    return FleetService.traccar(
+        base_url=settings.traccar_base_url,
+        username=settings.traccar_username,
+        password=settings.traccar_password,
+    )
 
 
 def create_app(

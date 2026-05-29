@@ -14,6 +14,8 @@ from app.detection.models import (
 from app.mock.generator import MockFleet
 from app.sources.base import FleetSource, FleetVehicle
 from app.sources.mock_source import MockSource
+from app.traccar.client import TraccarClient
+from app.traccar.source import TraccarSource
 
 _BUSINESS_HOURS = BusinessHours(
     operating_days=frozenset({0, 1, 2, 3, 4}),
@@ -41,6 +43,12 @@ class FleetService:
     def empty(cls, start_time: datetime | None = None) -> FleetService:
         fleet = MockFleet(start_time=start_time or _utcnow(), vehicles=())
         return cls(MockSource(fleet))
+
+    @classmethod
+    def traccar(cls, base_url: str, username: str, password: str) -> FleetService:
+        """Relay a live Traccar server."""
+        client = TraccarClient(base_url=base_url, username=username, password=password)
+        return cls(TraccarSource(client))
 
     def advance(self, dt_seconds: float, now: datetime | None = None) -> None:
         """Advance the source: step the simulation or poll the upstream feed."""
