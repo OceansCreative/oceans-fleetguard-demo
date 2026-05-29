@@ -20,7 +20,13 @@ const FleetMap = dynamic(
 const CONNECTION_LABEL = {
   connecting: "● connecting",
   live: "● live",
-  offline: "● offline",
+  reconnecting: "● reconnecting…",
+} as const;
+
+const CONNECTION_COLOR = {
+  connecting: "#9ca3af",
+  live: "#16a34a",
+  reconnecting: "#d97706",
 } as const;
 
 export function Dashboard(): React.JSX.Element {
@@ -41,7 +47,7 @@ export function Dashboard(): React.JSX.Element {
         }}
       >
         <strong>🛰️ FleetGuard</strong>
-        <span style={{ color: connection === "live" ? "#16a34a" : "#9ca3af" }}>
+        <span style={{ color: CONNECTION_COLOR[connection] }}>
           {CONNECTION_LABEL[connection]}
         </span>
       </header>
