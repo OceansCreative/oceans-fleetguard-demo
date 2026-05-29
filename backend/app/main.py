@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.fleet_service import FleetService
+from app.api.routes import create_router
+from app.api.stream import FleetStreamer
 from app.config import Settings
 
 
@@ -17,7 +23,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             settings. Injecting settings keeps the app easy to test.
     """
     resolved = settings or Settings.from_env()
-    app = FastAPI(title="FleetGuard API", version=__version__)
+    service = FleetService.mock() if resolved.mock_mode else FleetService.empty()
+    streamer = FleetStreamer(service)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        streamer.start()
+        try:
+            yield
+        finally:
+            await streamer.stop()
+
+    app = FastAPI(title="FleetGuard API", version=__version__, lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,
@@ -31,6 +48,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def health() -> dict[str, object]:
         """Liveness probe; also reports whether mock mode is active."""
         return {"status": "ok", "mock_mode": resolved.mock_mode}
+
+    app.include_router(create_router(service))
+
+    @app.websocket("/ws/positions")
+    async def positions(websocket: WebSocket) -> None:
+        """Stream live vehicle positions and alerts to the dashboard."""
+        await streamer.connect(websocket)
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            streamer.disconnect(websocket)
 
     return app
 
