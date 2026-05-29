@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from app.detection.geo import angular_difference_deg, haversine_m
+from app.detection.geo import (
+    angular_difference_deg,
+    destination_point,
+    haversine_m,
+    offset_point,
+)
 from app.detection.models import GeoPoint
 
 # Matsue Castle and Yonago Station, ~25 km apart.
@@ -36,3 +41,21 @@ def test_haversine_matsue_to_yonago_is_about_25km() -> None:
 )
 def test_angular_difference(a: float, b: float, expected: float) -> None:
     assert angular_difference_deg(a, b) == pytest.approx(expected)
+
+
+def test_offset_point_moves_the_expected_distance() -> None:
+    moved = offset_point(MATSUE, north_m=1_000.0, east_m=0.0)
+    assert haversine_m(MATSUE, moved) == pytest.approx(1_000.0, rel=0.01)
+    assert moved.lat > MATSUE.lat  # moved north
+
+
+def test_destination_point_respects_bearing_and_distance() -> None:
+    east = destination_point(MATSUE, bearing_deg=90.0, distance_m=500.0)
+    assert haversine_m(MATSUE, east) == pytest.approx(500.0, rel=0.01)
+    assert east.lon > MATSUE.lon  # due east increases longitude
+
+
+def test_destination_point_north_increases_latitude() -> None:
+    north = destination_point(MATSUE, bearing_deg=0.0, distance_m=500.0)
+    assert north.lat > MATSUE.lat
+    assert north.lon == pytest.approx(MATSUE.lon)
