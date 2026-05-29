@@ -17,3 +17,20 @@ black --check .   # format check
 mypy .            # types (strict)
 pytest --cov=app  # tests + coverage
 ```
+
+## API
+
+With `MOCK_MODE=true` (default) the endpoints serve a simulated fleet around
+Matsue / Yasugi / Yonago — no Traccar required.
+
+| Method | Path                  | Description                                   |
+| ------ | --------------------- | --------------------------------------------- |
+| GET    | `/health`             | Liveness; reports whether mock mode is active |
+| GET    | `/api/vehicles`       | All vehicles with latest position + alerts    |
+| GET    | `/api/vehicles/{id}`  | A single vehicle (404 if unknown)             |
+| GET    | `/api/alerts`         | Active alerts across the fleet                |
+| WS     | `/ws/positions`       | Live position + alert snapshots (pushed)      |
+
+Each vehicle's alerts come from the pure-function detection rules in
+[`app/detection`](./app/detection). When `MOCK_MODE=false` the fleet is empty
+(the live Traccar relay lands in a later PR).
