@@ -15,7 +15,7 @@ import httpx
 
 from app.sources.base import VehicleSample
 from app.traccar.client import TraccarClient
-from app.traccar.normalize import merge_readings
+from app.traccar.normalize import geofences_by_id, merge_readings
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +49,7 @@ class TraccarSource:
         try:
             devices = self._client.fetch_devices()
             positions = self._client.fetch_positions()
+            geofences = geofences_by_id(self._client.fetch_geofences())
         except (httpx.HTTPError, ValueError):
             logger.warning(
                 "Traccar poll failed; serving last known snapshot", exc_info=True
@@ -57,7 +58,7 @@ class TraccarSource:
             return
 
         updated: dict[str, VehicleSample] = {}
-        for reading in merge_readings(devices, positions):
+        for reading in merge_readings(devices, positions, geofences):
             previous = self._samples.get(reading.vehicle.id)
             updated[reading.vehicle.id] = VehicleSample(
                 vehicle=reading.vehicle,

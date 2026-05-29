@@ -11,6 +11,7 @@ from app.traccar.source import TraccarSource
 from tests.traccar._helpers import (
     DEVICE_VAN,
     DEVICES,
+    GEOFENCES,
     POSITION_VAN,
     POSITIONS,
     build_client,
@@ -34,6 +35,8 @@ def test_consecutive_polls_carry_the_previous_position_forward() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/devices":
             return httpx.Response(200, json=[DEVICE_VAN])
+        if request.url.path == "/api/geofences":
+            return httpx.Response(200, json=[])
         calls["n"] += 1
         moved = {
             **POSITION_VAN,
@@ -69,4 +72,13 @@ def test_failed_poll_keeps_the_last_good_snapshot() -> None:
     state["fail"] = True
     source.advance(2.0, NOW)  # upstream now failing
     assert len(source.snapshot()) == 2  # last good snapshot retained
+    asyncio.run(source.aclose())
+
+
+def test_poll_attaches_circular_geofences_to_vehicles() -> None:
+    source = TraccarSource(build_client(static_handler(DEVICES, POSITIONS, GEOFENCES)))
+    source.advance(2.0, NOW)
+    van = next(s for s in source.snapshot() if s.vehicle.id == "1")
+    assert van.vehicle.geofence is not None  # assigned via geofenceIds
+    assert van.vehicle.geofence.radius_m == 500.0
     asyncio.run(source.aclose())

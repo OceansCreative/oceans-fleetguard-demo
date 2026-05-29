@@ -59,6 +59,10 @@ class TraccarClient:
         """Return the latest position per device (``GET /api/positions``)."""
         return self._get_json("/api/positions")
 
+    def fetch_geofences(self) -> list[dict[str, Any]]:
+        """Return all geofences known to Traccar (``GET /api/geofences``)."""
+        return self._get_json("/api/geofences")
+
     def _get_json(self, path: str) -> list[dict[str, Any]]:
         response = self._client.get(path)
         response.raise_for_status()

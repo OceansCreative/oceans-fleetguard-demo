@@ -23,7 +23,11 @@ from datetime import datetime
 
 from app.sources.base import FleetVehicle, VehicleSample
 from app.traccar.client import TraccarClient
-from app.traccar.normalize import apply_positions, roster_from_devices
+from app.traccar.normalize import (
+    apply_positions,
+    geofences_by_id,
+    roster_from_devices,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +77,8 @@ class TraccarStreamSource:
 
     def _refresh_roster(self) -> None:
         try:
-            self._roster = roster_from_devices(self._client.fetch_devices())
+            geofences = geofences_by_id(self._client.fetch_geofences())
+            self._roster = roster_from_devices(self._client.fetch_devices(), geofences)
         except Exception:  # noqa: BLE001 - a missing roster degrades, not crashes
             logger.warning("failed to load Traccar device roster", exc_info=True)
 

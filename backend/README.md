@@ -57,12 +57,14 @@ The interesting part of the relay is [`app/traccar/normalize.py`](./app/traccar/
 pure functions that turn Traccar's wire format into our domain — converting
 **speed from knots to m/s**, inferring ignition state from the free-form
 `attributes` map (falling back to `motion`, then to speed), parsing timestamps,
-joining devices with their latest position (REST), and merging incremental
-position frames into the cache (WebSocket). Being pure, they're exhaustively
-unit-tested without touching the network; the HTTP/WS plumbing
+joining devices with their latest position (REST), merging incremental position
+frames into the cache (WebSocket), and parsing circular geofences from their WKT
+`area`. Being pure, they're exhaustively unit-tested without touching the
+network; the HTTP/WS plumbing
 ([`client.py`](./app/traccar/client.py), [`connect.py`](./app/traccar/connect.py))
 stays deliberately thin and is the only code that talks to a real server.
 
-> A raw Traccar feed has no depot/anchor, so the geofence rule is disabled for
-> relayed vehicles; the other four rules (off-hours, ignition-off, abnormal
-> speed/heading) still apply.
+> The geofence rule runs for a relayed vehicle when it has a **circular**
+> geofence assigned in Traccar (via its `geofenceIds`); polygon/polyline
+> geofences are ignored and that vehicle simply runs the other four rules
+> (off-hours, ignition-off, abnormal speed/heading).

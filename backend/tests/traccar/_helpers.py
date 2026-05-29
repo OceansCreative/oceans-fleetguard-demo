@@ -91,14 +91,17 @@ def build_client(handler: Callable[[httpx.Request], httpx.Response]) -> TraccarC
 def static_handler(
     devices: list[dict[str, Any]],
     positions: list[dict[str, Any]],
+    geofences: list[dict[str, Any]] | None = None,
 ) -> Callable[[httpx.Request], httpx.Response]:
-    """A handler that always serves the given devices and positions."""
+    """A handler that always serves the given devices, positions, geofences."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/devices":
             return httpx.Response(200, json=devices)
         if request.url.path == "/api/positions":
             return httpx.Response(200, json=positions)
+        if request.url.path == "/api/geofences":
+            return httpx.Response(200, json=geofences or [])
         return httpx.Response(404)
 
     return handler

@@ -7,7 +7,13 @@ import base64
 import httpx
 import pytest
 
-from tests.traccar._helpers import DEVICES, POSITIONS, build_client, static_handler
+from tests.traccar._helpers import (
+    DEVICES,
+    GEOFENCES,
+    POSITIONS,
+    build_client,
+    static_handler,
+)
 
 
 def test_fetch_devices_and_positions_return_parsed_json() -> None:
@@ -77,3 +83,9 @@ def test_session_cookie_is_empty_when_no_cookie_is_set() -> None:
         return httpx.Response(200, json={"id": 1})
 
     assert build_client(handler).session_cookie() == ""
+
+
+def test_fetch_geofences_returns_parsed_json() -> None:
+    client = build_client(static_handler([], [], GEOFENCES))
+    assert client.fetch_geofences() == GEOFENCES
+    client.close()
