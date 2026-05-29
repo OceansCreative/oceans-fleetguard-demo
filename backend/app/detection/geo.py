@@ -36,3 +36,32 @@ def angular_difference_deg(a_deg: float, b_deg: float) -> float:
     """
     diff = abs(a_deg - b_deg) % 360.0
     return diff if diff <= 180.0 else 360.0 - diff
+
+
+# Meters per degree of latitude (roughly constant across the globe).
+_M_PER_DEG_LAT = 111_320.0
+
+
+def offset_point(origin: GeoPoint, north_m: float, east_m: float) -> GeoPoint:
+    """Return ``origin`` shifted by the given north/east offsets in meters.
+
+    A local flat-earth approximation; accurate at fleet scale.
+    """
+    d_lat = north_m / _M_PER_DEG_LAT
+    d_lon = east_m / (_M_PER_DEG_LAT * math.cos(math.radians(origin.lat)))
+    return GeoPoint(lat=origin.lat + d_lat, lon=origin.lon + d_lon)
+
+
+def destination_point(
+    origin: GeoPoint, bearing_deg: float, distance_m: float
+) -> GeoPoint:
+    """Return the point ``distance_m`` from ``origin`` along ``bearing_deg``.
+
+    Bearing is measured clockwise from north.
+    """
+    bearing = math.radians(bearing_deg)
+    return offset_point(
+        origin,
+        north_m=distance_m * math.cos(bearing),
+        east_m=distance_m * math.sin(bearing),
+    )
