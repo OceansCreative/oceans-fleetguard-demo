@@ -1,8 +1,11 @@
 name: fleetguard
 
 # One-command stack: PostgreSQL + Traccar + backend + frontend.
-# Defaults run in mock mode, so the dashboard works without a real Traccar feed.
-# Copy ../.env.example to ../.env to override any value.
+#
+# Defaults run the backend in MOCK_MODE, so the dashboard works without a real
+# Traccar feed. To relay a live Traccar instead, copy ../.env.example to ../.env
+# and set MOCK_MODE=false plus TRACCAR_USERNAME / TRACCAR_PASSWORD (see
+# infra/README.md for the one-time Traccar account bootstrap).
 
 services:
   postgres:
@@ -24,8 +27,16 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Configure Traccar from the environment (instead of a mounted traccar.xml)
+    # so it persists to PostgreSQL rather than its embedded H2 database.
+    environment:
+      CONFIG_USE_ENVIRONMENT_VARIABLES: "true"
+      DATABASE_DRIVER: org.postgresql.Driver
+      DATABASE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-traccar}
+      DATABASE_USER: ${POSTGRES_USER:-traccar}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-traccar}
     ports:
-      - "8082:8082" # web / REST API
+      - "8082:8082" # web / REST API / WebSocket
       - "5055:5055" # OsmAnd device protocol
     restart: unless-stopped
 
@@ -36,10 +47,24 @@ services:
       MOCK_MODE: ${MOCK_MODE:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       TRACCAR_BASE_URL: ${TRACCAR_BASE_URL:-http://traccar:8082}
+      TRACCAR_WS_URL: ${TRACCAR_WS_URL:-ws://traccar:8082/api/socket}
+      TRACCAR_USERNAME: ${TRACCAR_USERNAME:-}
+      TRACCAR_PASSWORD: ${TRACCAR_PASSWORD:-}
+      TRACCAR_TRANSPORT: ${TRACCAR_TRANSPORT:-ws}
     ports:
       - "8000:8000"
     depends_on:
+      # Order only: the relay tolerates Traccar being unavailable and reconnects,
+      # and in mock mode Traccar is not used at all.
       - traccar
+    healthcheck:
+      test:
+        ["CMD", "python", "-c",
+         "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://localhost:8000/health').status==200 else sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   frontend:
     build:
@@ -50,4 +75,5 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
