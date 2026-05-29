@@ -112,7 +112,7 @@ def to_vehicle(raw: Mapping[str, Any]) -> FleetVehicle:
 
     Traccar identifies devices by a numeric ``id`` and a hardware ``uniqueId``;
     it has no licence-plate concept, so we surface ``uniqueId`` in that slot.
-    ``home`` is left ``None`` because a raw feed carries no depot anchor.
+    ``geofence`` is left ``None`` here; it is populated once geofences are loaded.
     """
     unique_id = str(raw.get("uniqueId") or raw.get("id") or "")
     name = str(raw.get("name") or unique_id or "unknown")
@@ -120,7 +120,7 @@ def to_vehicle(raw: Mapping[str, Any]) -> FleetVehicle:
         id=str(raw.get("id")),
         name=name,
         plate=unique_id,
-        home=None,
+        geofence=None,
     )
 
 
@@ -167,7 +167,7 @@ def roster_from_devices(
 
 def _fallback_vehicle(device_id: str) -> FleetVehicle:
     """Identity for a position whose device is not (yet) in the roster."""
-    return FleetVehicle(id=device_id, name=device_id, plate="", home=None)
+    return FleetVehicle(id=device_id, name=device_id, plate="", geofence=None)
 
 
 def apply_positions(

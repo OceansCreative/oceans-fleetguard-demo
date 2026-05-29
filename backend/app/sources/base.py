@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from app.detection.models import GeoPoint, Position
+from app.detection.models import CircularGeofence, Position
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,15 +17,15 @@ class FleetVehicle:
         id: Stable unique identifier.
         name: Human-readable name.
         plate: Licence plate (mock data only in this repo).
-        home: Geofence reference point. ``None`` when the source cannot supply a
-            known depot/anchor (e.g. a raw Traccar feed), which disables the
-            geofence rule while leaving the other rules active.
+        geofence: The vehicle's allowed area for the geofence rule. ``None`` when
+            the source supplies no geofence (e.g. a Traccar device with none
+            assigned), which disables that rule while the others stay active.
     """
 
     id: str
     name: str
     plate: str
-    home: GeoPoint | None
+    geofence: CircularGeofence | None
 
 
 @dataclass(frozen=True, slots=True)

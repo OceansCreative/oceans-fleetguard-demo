@@ -58,6 +58,6 @@ def test_normal_vehicle_stays_near_home_over_many_steps() -> None:
     for _ in range(200):
         fleet.step(2.0, START)
     van = next(s for s in fleet.samples() if s.vehicle.id == "v-001")
-    home = van.vehicle.home
-    assert home is not None  # mock vehicles always carry a home anchor
-    assert haversine_m(van.current.point, home) < 4_000.0
+    geofence = van.vehicle.geofence
+    assert geofence is not None  # mock vehicles always carry a geofence
+    assert haversine_m(van.current.point, geofence.center) < 4_000.0

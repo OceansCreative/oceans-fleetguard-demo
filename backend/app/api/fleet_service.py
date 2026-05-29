@@ -6,11 +6,7 @@ from datetime import UTC, datetime, time
 
 from app.api.schemas import AlertOut, VehicleOut
 from app.detection.engine import detect
-from app.detection.models import (
-    BusinessHours,
-    CircularGeofence,
-    DetectionConfig,
-)
+from app.detection.models import BusinessHours, DetectionConfig
 from app.mock.generator import MockFleet
 from app.sources.base import FleetSource, FleetVehicle
 from app.sources.mock_source import MockSource
@@ -24,7 +20,6 @@ _BUSINESS_HOURS = BusinessHours(
     start=time(8, 0),
     end=time(19, 0),
 )
-_GEOFENCE_RADIUS_M = 3_000.0
 
 
 def _utcnow() -> datetime:
@@ -93,11 +88,8 @@ class FleetService:
 
     @staticmethod
     def _config_for(vehicle: FleetVehicle) -> DetectionConfig:
-        # The geofence rule only applies when the source knows the vehicle's
-        # anchor (the mock does; a raw Traccar feed does not).
-        geofence = (
-            CircularGeofence(center=vehicle.home, radius_m=_GEOFENCE_RADIUS_M)
-            if vehicle.home is not None
-            else None
+        # The geofence rule only applies when the source supplied one (the mock
+        # always does; a Traccar device may have none assigned).
+        return DetectionConfig(
+            geofence=vehicle.geofence, business_hours=_BUSINESS_HOURS
         )
-        return DetectionConfig(geofence=geofence, business_hours=_BUSINESS_HOURS)

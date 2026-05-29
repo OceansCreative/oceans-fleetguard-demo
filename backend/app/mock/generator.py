@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.detection.geo import destination_point, haversine_m
-from app.detection.models import GeoPoint, Position
+from app.detection.models import CircularGeofence, GeoPoint, Position
 from app.sources.base import FleetVehicle, VehicleSample
 
-# A mock vehicle is just a fleet vehicle whose home (geofence anchor) is always
-# known, so we reuse the source-agnostic identity type directly.
+# A mock vehicle is just a fleet vehicle whose geofence is always known, so we
+# reuse the source-agnostic identity type directly.
 MockVehicle = FleetVehicle
 
 # Anchor points (approximate town centers) the mock fleet patrols around.
@@ -25,19 +25,31 @@ MATSUE = GeoPoint(lat=35.4723, lon=133.0505)
 YASUGI = GeoPoint(lat=35.4309, lon=133.2503)
 YONAGO = GeoPoint(lat=35.4281, lon=133.3311)
 
-# How far a vehicle may stray from home before it steers back (meters).
+# How far a vehicle may stray from its anchor before it steers back (meters).
 _LEASH_M = 2_500.0
+# Geofence radius for the detection rule (vehicles patrol within the leash, so a
+# wider geofence only trips when one is driven away deliberately).
+_GEOFENCE_RADIUS_M = 3_000.0
 _MAX_TURN_DEG = 25.0
 _CRUISE_SPEED_MPS = 12.0
 
 
+def _mock_vehicle(id: str, name: str, plate: str, anchor: GeoPoint) -> MockVehicle:
+    return FleetVehicle(
+        id=id,
+        name=name,
+        plate=plate,
+        geofence=CircularGeofence(center=anchor, radius_m=_GEOFENCE_RADIUS_M),
+    )
+
+
 DEFAULT_FLEET: tuple[MockVehicle, ...] = (
-    MockVehicle("v-001", "Van 01", "matsue 800 a 10-01", MATSUE),
-    MockVehicle("v-002", "Van 02", "matsue 800 a 10-02", MATSUE),
-    MockVehicle("v-003", "Truck 01", "yasugi 800 a 20-01", YASUGI),
-    MockVehicle("v-004", "Truck 02", "yonago 800 a 30-01", YONAGO),
+    _mock_vehicle("v-001", "Van 01", "matsue 800 a 10-01", MATSUE),
+    _mock_vehicle("v-002", "Van 02", "matsue 800 a 10-02", MATSUE),
+    _mock_vehicle("v-003", "Truck 01", "yasugi 800 a 20-01", YASUGI),
+    _mock_vehicle("v-004", "Truck 02", "yonago 800 a 30-01", YONAGO),
     # Driven into a theft scenario so alerts fire out of the box.
-    MockVehicle("v-005", "Van 03", "yonago 800 a 30-02", YONAGO),
+    _mock_vehicle("v-005", "Van 03", "yonago 800 a 30-02", YONAGO),
 )
 
 _SUSPICIOUS_ID = "v-005"
@@ -76,11 +88,12 @@ class MockFleet:
         self._runtime = [self._spawn(v, start_time) for v in vehicles]
 
     def _spawn(self, vehicle: MockVehicle, start_time: datetime) -> _Runtime:
-        if vehicle.home is None:  # pragma: no cover - mock vehicles always set home
-            raise ValueError(f"mock vehicle {vehicle.id} is missing a home anchor")
+        if vehicle.geofence is None:  # pragma: no cover - mock vehicles set it
+            raise ValueError(f"mock vehicle {vehicle.id} is missing a geofence")
+        anchor = vehicle.geofence.center
         heading = self._rng.uniform(0.0, 360.0)
         current = Position(
-            point=vehicle.home,
+            point=anchor,
             speed_mps=0.0,
             course_deg=heading,
             ignition_on=True,
@@ -88,7 +101,7 @@ class MockFleet:
         )
         return _Runtime(
             vehicle=vehicle,
-            home=vehicle.home,
+            home=anchor,
             heading_deg=heading,
             current=current,
             previous=None,

@@ -107,7 +107,7 @@ def test_to_vehicle_maps_identity_and_leaves_home_unknown() -> None:
     assert vehicle.id == "1"
     assert vehicle.name == "Van 01"
     assert vehicle.plate == "matsue-001"  # Traccar uniqueId stands in for plate
-    assert vehicle.home is None
+    assert vehicle.geofence is None
 
 
 def test_to_vehicle_falls_back_to_unique_id_when_name_blank() -> None:
@@ -202,7 +202,7 @@ def test_apply_positions_falls_back_for_unknown_devices() -> None:
     result = apply_positions({}, {}, [POSITION_VAN])
     assert result["1"].vehicle.id == "1"
     assert result["1"].vehicle.name == "1"
-    assert result["1"].vehicle.home is None
+    assert result["1"].vehicle.geofence is None
 
 
 def test_apply_positions_skips_malformed_or_orphan_records() -> None:
