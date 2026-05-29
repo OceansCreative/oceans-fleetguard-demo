@@ -8,8 +8,10 @@ import pytest
 from app.sources.base import VehicleSample
 from app.traccar.normalize import (
     apply_positions,
+    geofences_by_id,
     knots_to_mps,
     merge_readings,
+    parse_circular_geofence,
     parse_time,
     roster_from_devices,
     to_position,
@@ -21,6 +23,7 @@ from tests.traccar._helpers import (
     DEVICE_TRUCK,
     DEVICE_VAN,
     DEVICES,
+    GEOFENCES,
     POSITION_TRUCK,
     POSITION_VAN,
     POSITIONS,
@@ -102,7 +105,7 @@ def test_to_position_raises_without_a_timestamp() -> None:
         to_position({"latitude": 0, "longitude": 0, "speed": 0})
 
 
-def test_to_vehicle_maps_identity_and_leaves_home_unknown() -> None:
+def test_to_vehicle_maps_identity_and_leaves_geofence_unknown() -> None:
     vehicle = to_vehicle(DEVICE_VAN)
     assert vehicle.id == "1"
     assert vehicle.name == "Van 01"
@@ -210,3 +213,54 @@ def test_apply_positions_skips_malformed_or_orphan_records() -> None:
     no_device = {**POSITION_VAN, "deviceId": None}
     no_time = {"deviceId": 1, "latitude": 1.0, "longitude": 2.0, "speed": 0.0}
     assert apply_positions(roster, {}, [no_device, no_time]) == {}
+
+
+def test_parse_circular_geofence_reads_lat_lon_radius() -> None:
+    circle = parse_circular_geofence("CIRCLE (35.4723 133.0505, 500)")
+    assert circle is not None
+    assert circle.center.lat == 35.4723
+    assert circle.center.lon == 133.0505
+    assert circle.radius_m == 500.0
+
+
+@pytest.mark.parametrize(
+    "area",
+    [
+        None,
+        42,
+        "POLYGON ((35.47 133.05, 35.48 133.06, 35.47 133.05))",
+        "LINESTRING (35.47 133.05, 35.48 133.06)",
+        "garbage",
+    ],
+)
+def test_parse_circular_geofence_ignores_non_circles(area: object) -> None:
+    assert parse_circular_geofence(area) is None
+
+
+def test_geofences_by_id_keeps_only_circles() -> None:
+    lookup = geofences_by_id(GEOFENCES)
+    assert set(lookup) == {"10"}  # polygon dropped
+    assert lookup["10"].radius_m == 500.0
+
+
+def test_to_vehicle_attaches_an_assigned_circular_geofence() -> None:
+    vehicle = to_vehicle(DEVICE_VAN, geofences_by_id(GEOFENCES))
+    assert vehicle.geofence is not None
+    assert vehicle.geofence.radius_m == 500.0
+
+
+def test_to_vehicle_has_no_geofence_when_device_assigns_none() -> None:
+    # DEVICE_TRUCK carries no geofenceIds.
+    assert to_vehicle(DEVICE_TRUCK, geofences_by_id(GEOFENCES)).geofence is None
+
+
+def test_merge_readings_attaches_geofences() -> None:
+    readings = merge_readings(DEVICES, POSITIONS, geofences_by_id(GEOFENCES))
+    van = next(r for r in readings if r.vehicle.id == "1")
+    assert van.vehicle.geofence is not None
+
+
+def test_roster_from_devices_attaches_geofences() -> None:
+    roster = roster_from_devices(DEVICES, geofences_by_id(GEOFENCES))
+    assert roster["1"].geofence is not None
+    assert roster["2"].geofence is None

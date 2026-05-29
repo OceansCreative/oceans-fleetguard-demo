@@ -13,16 +13,24 @@ the tricky normalization rules cheap to unit-test against realistic payloads.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from app.detection.models import GeoPoint, Position
+from app.detection.models import CircularGeofence, GeoPoint, Position
 from app.sources.base import FleetVehicle, VehicleSample
 
 # Traccar reports speed over ground in knots; the rest of the app works in m/s.
 _KNOTS_TO_MPS = 0.514444
+
+# Traccar stores a circular geofence as WKT: ``CIRCLE (lat lon, radius_m)``.
+# Note Traccar's axis order is latitude-then-longitude (not standard WKT).
+_CIRCLE_RE = re.compile(
+    r"CIRCLE\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,26 +115,74 @@ def to_position(raw: Mapping[str, Any]) -> Position:
     )
 
 
-def to_vehicle(raw: Mapping[str, Any]) -> FleetVehicle:
+def parse_circular_geofence(area: object) -> CircularGeofence | None:
+    """Parse a Traccar geofence ``area`` (WKT) into a :class:`CircularGeofence`.
+
+    Only circular geofences are supported; polygons and polylines (and anything
+    unparseable) return ``None`` so the geofence rule simply stays off for them.
+    """
+    if not isinstance(area, str):
+        return None
+    match = _CIRCLE_RE.search(area)
+    if match is None:
+        return None
+    lat, lon, radius = (float(match.group(i)) for i in (1, 2, 3))
+    return CircularGeofence(center=GeoPoint(lat=lat, lon=lon), radius_m=radius)
+
+
+def geofences_by_id(
+    geofences: Sequence[Mapping[str, Any]],
+) -> dict[str, CircularGeofence]:
+    """Build a ``geofence id -> circle`` lookup, dropping non-circular ones."""
+    result: dict[str, CircularGeofence] = {}
+    for raw in geofences:
+        circle = parse_circular_geofence(raw.get("area"))
+        if circle is not None:
+            result[str(raw.get("id"))] = circle
+    return result
+
+
+def _pick_geofence(
+    raw_device: Mapping[str, Any],
+    geofences: Mapping[str, CircularGeofence],
+) -> CircularGeofence | None:
+    """Return the first circular geofence assigned to a device, if any."""
+    ids = raw_device.get("geofenceIds")
+    if not isinstance(ids, list):
+        return None
+    for geofence_id in ids:
+        circle = geofences.get(str(geofence_id))
+        if circle is not None:
+            return circle
+    return None
+
+
+def to_vehicle(
+    raw: Mapping[str, Any],
+    geofences: Mapping[str, CircularGeofence] | None = None,
+) -> FleetVehicle:
     """Normalize a Traccar device record into a :class:`FleetVehicle`.
 
     Traccar identifies devices by a numeric ``id`` and a hardware ``uniqueId``;
     it has no licence-plate concept, so we surface ``uniqueId`` in that slot.
-    ``geofence`` is left ``None`` here; it is populated once geofences are loaded.
+    When ``geofences`` is supplied, the device's first assigned circular geofence
+    (via its ``geofenceIds``) is attached so the geofence rule can run.
     """
     unique_id = str(raw.get("uniqueId") or raw.get("id") or "")
     name = str(raw.get("name") or unique_id or "unknown")
+    geofence = _pick_geofence(raw, geofences) if geofences else None
     return FleetVehicle(
         id=str(raw.get("id")),
         name=name,
         plate=unique_id,
-        geofence=None,
+        geofence=geofence,
     )
 
 
 def merge_readings(
     devices: Sequence[Mapping[str, Any]],
     positions: Sequence[Mapping[str, Any]],
+    geofences: Mapping[str, CircularGeofence] | None = None,
 ) -> list[DeviceReading]:
     """Join devices with their latest positions into normalized readings.
 
@@ -154,15 +210,17 @@ def merge_readings(
         matched = latest.get(str(raw_device.get("id")))
         if matched is None:
             continue
-        readings.append(DeviceReading(vehicle=to_vehicle(raw_device), position=matched))
+        vehicle = to_vehicle(raw_device, geofences)
+        readings.append(DeviceReading(vehicle=vehicle, position=matched))
     return readings
 
 
 def roster_from_devices(
     devices: Sequence[Mapping[str, Any]],
+    geofences: Mapping[str, CircularGeofence] | None = None,
 ) -> dict[str, FleetVehicle]:
     """Build a ``device id -> identity`` lookup from Traccar's device roster."""
-    return {str(raw.get("id")): to_vehicle(raw) for raw in devices}
+    return {str(raw.get("id")): to_vehicle(raw, geofences) for raw in devices}
 
 
 def _fallback_vehicle(device_id: str) -> FleetVehicle:

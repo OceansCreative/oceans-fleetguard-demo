@@ -13,13 +13,14 @@ from typing import Any
 import httpx
 from app.traccar.client import TraccarClient
 
-# A device that is moving with the ignition on.
+# A device that is moving with the ignition on; assigned the circular geofence.
 DEVICE_VAN: dict[str, Any] = {
     "id": 1,
     "name": "Van 01",
     "uniqueId": "matsue-001",
     "status": "online",
     "positionId": 101,
+    "geofenceIds": [10],
 }
 # A device whose name is blank, so normalization must fall back to uniqueId.
 DEVICE_TRUCK: dict[str, Any] = {
@@ -61,6 +62,20 @@ POSITION_TRUCK: dict[str, Any] = {
 
 DEVICES: list[dict[str, Any]] = [DEVICE_VAN, DEVICE_TRUCK, DEVICE_GHOST]
 POSITIONS: list[dict[str, Any]] = [POSITION_VAN, POSITION_TRUCK]
+
+# A circular geofence (Traccar WKT, lat-lon axis order) and a non-circular one
+# that normalization must ignore.
+GEOFENCE_CIRCLE: dict[str, Any] = {
+    "id": 10,
+    "name": "Matsue depot",
+    "area": "CIRCLE (35.4723 133.0505, 500)",
+}
+GEOFENCE_POLYGON: dict[str, Any] = {
+    "id": 11,
+    "name": "Yard",
+    "area": "POLYGON ((35.47 133.05, 35.48 133.05, 35.48 133.06, 35.47 133.05))",
+}
+GEOFENCES: list[dict[str, Any]] = [GEOFENCE_CIRCLE, GEOFENCE_POLYGON]
 
 
 def build_client(handler: Callable[[httpx.Request], httpx.Response]) -> TraccarClient:
