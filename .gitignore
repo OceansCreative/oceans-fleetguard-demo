@@ -1,0 +1,48 @@
+# --- Environment & secrets (NEVER commit real credentials) ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Node / frontend ---
+node_modules/
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+.eslintcache
+.pnpm-store/
+playwright-report/
+test-results/
+
+# --- Python / backend ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# --- Docker / infra volumes ---
+infra/**/data/
+*.sqlite
+*.db
+
+# --- Editor / OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.log
