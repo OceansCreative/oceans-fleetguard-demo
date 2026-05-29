@@ -32,11 +32,15 @@ class Settings:
             relaying a live Traccar instance.
         cors_origins: Allowed CORS origins for the frontend.
         traccar_base_url: Base URL of the upstream Traccar server.
+        traccar_username: Traccar account used for REST authentication.
+        traccar_password: Password for ``traccar_username``.
     """
 
     mock_mode: bool
     cors_origins: tuple[str, ...]
     traccar_base_url: str
+    traccar_username: str
+    traccar_password: str
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -45,4 +49,6 @@ class Settings:
             mock_mode=_get_bool("MOCK_MODE", default=True),
             cors_origins=_get_origins("CORS_ORIGINS", "http://localhost:3000"),
             traccar_base_url=os.environ.get("TRACCAR_BASE_URL", "http://traccar:8082"),
+            traccar_username=os.environ.get("TRACCAR_USERNAME", ""),
+            traccar_password=os.environ.get("TRACCAR_PASSWORD", ""),
         )

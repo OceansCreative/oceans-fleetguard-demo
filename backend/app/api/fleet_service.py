@@ -1,4 +1,4 @@
-"""Fleet service: advances the mock fleet and runs detection per vehicle."""
+"""Fleet service: pulls samples from a source and runs detection per vehicle."""
 
 from __future__ import annotations
 
@@ -11,7 +11,11 @@ from app.detection.models import (
     CircularGeofence,
     DetectionConfig,
 )
-from app.mock.generator import MockFleet, MockVehicle
+from app.mock.generator import MockFleet
+from app.sources.base import FleetSource, FleetVehicle
+from app.sources.mock_source import MockSource
+from app.traccar.client import TraccarClient
+from app.traccar.source import TraccarSource
 
 _BUSINESS_HOURS = BusinessHours(
     operating_days=frozenset({0, 1, 2, 3, 4}),
@@ -26,22 +30,29 @@ def _utcnow() -> datetime:
 
 
 class FleetService:
-    """Bridges the simulation and the detection engine into API payloads."""
+    """Bridges a fleet source and the detection engine into API payloads."""
 
-    def __init__(self, fleet: MockFleet) -> None:
-        self._fleet = fleet
+    def __init__(self, source: FleetSource) -> None:
+        self._source = source
 
     @classmethod
     def mock(cls, start_time: datetime | None = None, seed: int = 42) -> FleetService:
-        return cls(MockFleet(start_time=start_time or _utcnow(), seed=seed))
+        return cls(MockSource(MockFleet(start_time=start_time or _utcnow(), seed=seed)))
 
     @classmethod
     def empty(cls, start_time: datetime | None = None) -> FleetService:
-        return cls(MockFleet(start_time=start_time or _utcnow(), vehicles=()))
+        fleet = MockFleet(start_time=start_time or _utcnow(), vehicles=())
+        return cls(MockSource(fleet))
+
+    @classmethod
+    def traccar(cls, base_url: str, username: str, password: str) -> FleetService:
+        """Relay a live Traccar server."""
+        client = TraccarClient(base_url=base_url, username=username, password=password)
+        return cls(TraccarSource(client))
 
     def advance(self, dt_seconds: float, now: datetime | None = None) -> None:
-        """Step the simulation forward."""
-        self._fleet.step(dt_seconds, now or _utcnow())
+        """Advance the source: step the simulation or poll the upstream feed."""
+        self._source.advance(dt_seconds, now or _utcnow())
 
     def vehicles(self) -> list[VehicleOut]:
         """Current vehicles, each with freshly evaluated alerts."""
@@ -52,7 +63,7 @@ class FleetService:
                     sample.current, self._config_for(sample.vehicle), sample.previous
                 ),
             )
-            for sample in self._fleet.samples()
+            for sample in self._source.snapshot()
         ]
 
     def vehicle(self, vehicle_id: str) -> VehicleOut | None:
@@ -61,9 +72,17 @@ class FleetService:
     def alerts(self) -> list[AlertOut]:
         return [alert for vehicle in self.vehicles() for alert in vehicle.alerts]
 
+    def close(self) -> None:
+        """Release any resources held by the underlying source."""
+        self._source.close()
+
     @staticmethod
-    def _config_for(vehicle: MockVehicle) -> DetectionConfig:
-        return DetectionConfig(
-            geofence=CircularGeofence(center=vehicle.home, radius_m=_GEOFENCE_RADIUS_M),
-            business_hours=_BUSINESS_HOURS,
+    def _config_for(vehicle: FleetVehicle) -> DetectionConfig:
+        # The geofence rule only applies when the source knows the vehicle's
+        # anchor (the mock does; a raw Traccar feed does not).
+        geofence = (
+            CircularGeofence(center=vehicle.home, radius_m=_GEOFENCE_RADIUS_M)
+            if vehicle.home is not None
+            else None
         )
+        return DetectionConfig(geofence=geofence, business_hours=_BUSINESS_HOURS)

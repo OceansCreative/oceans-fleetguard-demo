@@ -32,5 +32,31 @@ Matsue / Yasugi / Yonago — no Traccar required.
 | WS     | `/ws/positions`       | Live position + alert snapshots (pushed)      |
 
 Each vehicle's alerts come from the pure-function detection rules in
-[`app/detection`](./app/detection). When `MOCK_MODE=false` the fleet is empty
-(the live Traccar relay lands in a later PR).
+[`app/detection`](./app/detection).
+
+## Data sources
+
+The API is agnostic about where positions come from: both the mock and the live
+relay implement the same [`FleetSource`](./app/sources/base.py) contract
+(`advance()` to produce the next state, `snapshot()` to read it), so the routes,
+streamer and detection engine never know the difference.
+
+- **Mock** (`MOCK_MODE=true`): a deterministic, seedable simulation
+  ([`app/mock`](./app/mock)).
+- **Traccar relay** (`MOCK_MODE=false`): a thin client polls Traccar's REST API
+  (`/api/devices` + `/api/positions`) on each tick. Set `TRACCAR_BASE_URL`,
+  `TRACCAR_USERNAME` and `TRACCAR_PASSWORD`.
+
+The interesting part of the relay is [`app/traccar/normalize.py`](./app/traccar/normalize.py):
+pure functions that turn Traccar's wire format into our domain — converting
+**speed from knots to m/s**, inferring ignition state from the free-form
+`attributes` map (falling back to `motion`, then to speed), parsing timestamps,
+and joining devices with their latest position. Being pure, they're exhaustively
+unit-tested without touching the network. The HTTP plumbing
+([`client.py`](./app/traccar/client.py)) stays deliberately thin. A failed poll
+keeps serving the last good snapshot rather than blanking the dashboard.
+
+> A raw Traccar feed has no depot/anchor, so the geofence rule is disabled for
+> relayed vehicles; the other four rules (off-hours, ignition-off, abnormal
+> speed/heading) still apply. Live WebSocket streaming from Traccar is a future
+> enhancement — the relay currently polls.
