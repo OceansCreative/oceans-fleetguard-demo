@@ -62,6 +62,14 @@ def test_parse_time_returns_none_for_unusable_values(bad: object) -> None:
     assert parse_time(bad) is None
 
 
+def test_parse_time_pins_zoneless_timestamps_to_utc() -> None:
+    # A timestamp with no offset must come back tz-aware (UTC), not naive, so it
+    # stays comparable with the aware timestamps Traccar usually sends.
+    parsed = parse_time("2026-05-29T03:00:00")
+    assert parsed == datetime(2026, 5, 29, 3, 0, tzinfo=UTC)
+    assert parsed is not None and parsed.tzinfo is not None
+
+
 def test_to_position_converts_speed_and_reads_ignition() -> None:
     position = to_position(POSITION_VAN)
     assert position.speed_mps == pytest.approx(10.28888)
@@ -146,6 +154,16 @@ def test_merge_skips_a_position_that_cannot_be_normalized() -> None:
     # A record with a deviceId but no parseable timestamp is dropped, not fatal.
     broken = {"deviceId": 1, "latitude": 1.0, "longitude": 2.0, "speed": 0.0}
     assert merge_readings([DEVICE_VAN], [broken]) == []
+
+
+def test_merge_handles_mixed_aware_and_naive_timestamps() -> None:
+    # One device reporting both an aware and a zone-less timestamp must not crash
+    # the recency comparison (it used to raise TypeError); the later wins.
+    aware = {**POSITION_VAN, "fixTime": "2026-05-29T03:00:00Z", "course": 1.0}
+    naive = {**POSITION_VAN, "fixTime": "2026-05-29T04:00:00", "course": 2.0}
+    readings = merge_readings([DEVICE_VAN], [aware, naive])
+    assert len(readings) == 1
+    assert readings[0].position.course_deg == 2.0
 
 
 def test_to_position_coerces_string_and_garbage_numeric_fields() -> None:

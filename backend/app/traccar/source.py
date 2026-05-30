@@ -11,8 +11,6 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-import httpx
-
 from app.sources.base import VehicleSample
 from app.traccar.client import TraccarClient
 from app.traccar.normalize import geofences_by_id, merge_readings
@@ -50,7 +48,11 @@ class TraccarSource:
             devices = self._client.fetch_devices()
             positions = self._client.fetch_positions()
             geofences = geofences_by_id(self._client.fetch_geofences())
-        except (httpx.HTTPError, ValueError):
+            readings = merge_readings(devices, positions, geofences)
+        except Exception:  # noqa: BLE001 - any poll fault degrades, never crashes
+            # Network errors, malformed payloads, and bad upstream data alike:
+            # keep the last good snapshot rather than letting the exception
+            # escape into (and kill) the broadcast loop.
             logger.warning(
                 "Traccar poll failed; serving last known snapshot", exc_info=True
             )
@@ -58,7 +60,7 @@ class TraccarSource:
             return
 
         updated: dict[str, VehicleSample] = {}
-        for reading in merge_readings(devices, positions, geofences):
+        for reading in readings:
             previous = self._samples.get(reading.vehicle.id)
             updated[reading.vehicle.id] = VehicleSample(
                 vehicle=reading.vehicle,

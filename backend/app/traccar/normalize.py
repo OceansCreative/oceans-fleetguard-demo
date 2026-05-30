@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from app.detection.models import CircularGeofence, GeoPoint, Position
@@ -50,14 +50,18 @@ def parse_time(raw: object) -> datetime | None:
     """Parse a Traccar ISO-8601 timestamp (``...Z`` suffix included).
 
     Returns ``None`` for missing or unparseable values so callers can fall back
-    to another field rather than crash on a single malformed record.
+    to another field rather than crash on a single malformed record. A
+    zone-less timestamp is pinned to UTC, because mixing naive and aware
+    datetimes for the same device makes them uncomparable and would crash the
+    "keep the most recent position" merge with a ``TypeError``.
     """
     if not isinstance(raw, str) or not raw:
         return None
     try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(raw)  # Python 3.11+ accepts the Z suffix
     except ValueError:
         return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
 def _coerce_float(raw: object) -> float:
