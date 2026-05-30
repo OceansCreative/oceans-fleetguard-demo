@@ -65,7 +65,11 @@ def parse_time(raw: object) -> datetime | None:
 
 
 def _coerce_float(raw: object) -> float:
-    """Best-effort float coercion; treats missing/garbage values as 0.0."""
+    """Best-effort float coercion; treats missing/garbage values as 0.0.
+
+    Used for non-positional fields (speed, course) where a degraded 0.0 is a
+    sensible default. Coordinates use :func:`_coerce_coordinate` instead.
+    """
     if isinstance(raw, bool):  # guard: bool is an int subclass in Python
         return 0.0
     if isinstance(raw, (int, float)):
@@ -76,6 +80,26 @@ def _coerce_float(raw: object) -> float:
         except ValueError:
             return 0.0
     return 0.0
+
+
+def _coerce_coordinate(raw: object) -> float | None:
+    """Coerce a latitude/longitude, returning ``None`` for missing or garbage.
+
+    Unlike :func:`_coerce_float`, a bad coordinate must not silently become 0.0:
+    that would strand the vehicle at "Null Island" (0, 0) and feed a fake point
+    into geofence/detection logic. Returning ``None`` lets the caller drop the
+    position instead. A legitimate ``0.0`` (equator/prime meridian) is kept.
+    """
+    if isinstance(raw, bool):  # guard: bool is an int subclass in Python
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if isinstance(raw, str):
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    return None
 
 
 def _infer_ignition(attributes: Mapping[str, Any], speed_mps: float) -> bool:
@@ -95,11 +119,20 @@ def _infer_ignition(attributes: Mapping[str, Any], speed_mps: float) -> bool:
 
 
 def to_position(raw: Mapping[str, Any]) -> Position:
-    """Normalize a single Traccar position record into a :class:`Position`."""
+    """Normalize a single Traccar position record into a :class:`Position`.
+
+    Raises ``ValueError`` for records that cannot be placed on the map — no
+    usable coordinates or no parseable timestamp — so callers drop them rather
+    than emit a fabricated point. Callers already skip ``ValueError`` records.
+    """
     attributes = raw.get("attributes")
     if not isinstance(attributes, Mapping):
         attributes = {}
     speed_mps = knots_to_mps(_coerce_float(raw.get("speed")))
+    lat = _coerce_coordinate(raw.get("latitude"))
+    lon = _coerce_coordinate(raw.get("longitude"))
+    if lat is None or lon is None:
+        raise ValueError("position record has no usable coordinates")
     recorded_at = (
         parse_time(raw.get("fixTime"))
         or parse_time(raw.get("deviceTime"))
@@ -108,10 +141,7 @@ def to_position(raw: Mapping[str, Any]) -> Position:
     if recorded_at is None:
         raise ValueError("position record has no parseable timestamp")
     return Position(
-        point=GeoPoint(
-            lat=_coerce_float(raw.get("latitude")),
-            lon=_coerce_float(raw.get("longitude")),
-        ),
+        point=GeoPoint(lat=lat, lon=lon),
         speed_mps=speed_mps,
         course_deg=_coerce_float(raw.get("course")),
         ignition_on=_infer_ignition(attributes, speed_mps),
@@ -211,7 +241,10 @@ def merge_readings(
 
     readings: list[DeviceReading] = []
     for raw_device in devices:
-        matched = latest.get(str(raw_device.get("id")))
+        device_id = raw_device.get("id")
+        if device_id is None:
+            continue  # an id-less device can't be keyed or matched; skip it
+        matched = latest.get(str(device_id))
         if matched is None:
             continue
         vehicle = to_vehicle(raw_device, geofences)
@@ -223,8 +256,18 @@ def roster_from_devices(
     devices: Sequence[Mapping[str, Any]],
     geofences: Mapping[str, CircularGeofence] | None = None,
 ) -> dict[str, FleetVehicle]:
-    """Build a ``device id -> identity`` lookup from Traccar's device roster."""
-    return {str(raw.get("id")): to_vehicle(raw, geofences) for raw in devices}
+    """Build a ``device id -> identity`` lookup from Traccar's device roster.
+
+    Devices without an ``id`` are skipped rather than collapsed onto a shared
+    ``"None"`` key (which would alias distinct devices together).
+    """
+    roster: dict[str, FleetVehicle] = {}
+    for raw in devices:
+        device_id = raw.get("id")
+        if device_id is None:
+            continue
+        roster[str(device_id)] = to_vehicle(raw, geofences)
+    return roster
 
 
 def _fallback_vehicle(device_id: str) -> FleetVehicle:

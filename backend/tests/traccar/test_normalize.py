@@ -36,16 +36,19 @@ def test_knots_to_mps_converts_using_the_nautical_factor() -> None:
 
 
 def test_boolean_numeric_fields_do_not_leak_through_as_one() -> None:
-    # bool is an int subclass; a stray True must coerce to 0.0, not 1.0.
+    # bool is an int subclass; a stray True on a non-positional field (speed,
+    # course) must coerce to 0.0, not 1.0.
     position = to_position(
         {
-            "latitude": True,
-            "longitude": 0,
-            "speed": 0,
+            "latitude": 1.0,
+            "longitude": 2.0,
+            "speed": True,
+            "course": True,
             "fixTime": "2026-05-29T03:00:00Z",
         }
     )
-    assert position.point.lat == 0.0
+    assert position.speed_mps == 0.0
+    assert position.course_deg == 0.0
 
 
 def test_parse_time_handles_z_suffix_and_offsets() -> None:
@@ -166,18 +169,79 @@ def test_merge_handles_mixed_aware_and_naive_timestamps() -> None:
     assert readings[0].position.course_deg == 2.0
 
 
-def test_to_position_coerces_string_and_garbage_numeric_fields() -> None:
+def test_to_position_coerces_numeric_strings() -> None:
     position = to_position(
         {
             "latitude": "35.5",  # Traccar normally sends floats; be defensive
-            "longitude": "bad",  # unparseable -> treated as 0.0
+            "longitude": "133.05",
             "speed": "10",
             "fixTime": "2026-05-29T03:00:00Z",
         }
     )
     assert position.point.lat == 35.5
-    assert position.point.lon == 0.0
+    assert position.point.lon == 133.05
     assert position.speed_mps == pytest.approx(knots_to_mps(10.0))
+
+
+def test_to_position_zeroes_a_garbage_speed_but_keeps_the_fix() -> None:
+    # speed is non-positional: a garbage value degrades to 0.0 rather than
+    # dropping the whole (still placeable) position.
+    position = to_position(
+        {
+            "latitude": 35.5,
+            "longitude": 133.05,
+            "speed": "fast",
+            "fixTime": "2026-05-29T03:00:00Z",
+        }
+    )
+    assert position.speed_mps == 0.0
+    assert position.point.lat == 35.5
+
+
+@pytest.mark.parametrize(
+    "coords",
+    [
+        {},  # both absent
+        {"latitude": 35.5},  # longitude absent
+        {"longitude": 133.05},  # latitude absent
+        {"latitude": "bad", "longitude": 133.05},  # unparseable latitude
+        {"latitude": 35.5, "longitude": None},  # explicit null
+        {"latitude": True, "longitude": 133.05},  # bool is not a coordinate
+    ],
+)
+def test_to_position_drops_records_without_usable_coordinates(
+    coords: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError):
+        to_position({**coords, "speed": 0, "fixTime": "2026-05-29T03:00:00Z"})
+
+
+def test_to_position_keeps_legitimate_zero_coordinates() -> None:
+    # A device genuinely on the equator / prime meridian reports (0, 0); that is
+    # real data and must be kept, unlike a missing coordinate.
+    position = to_position(
+        {"latitude": 0, "longitude": 0.0, "speed": 0, "fixTime": "2026-05-29T03:00:00Z"}
+    )
+    assert position.point.lat == 0.0
+    assert position.point.lon == 0.0
+
+
+def test_merge_drops_a_position_with_missing_coordinates() -> None:
+    no_coords = {"deviceId": 1, "speed": 0.0, "fixTime": "2026-05-29T03:00:00Z"}
+    assert merge_readings([DEVICE_VAN], [no_coords]) == []
+
+
+def test_merge_skips_devices_without_an_id() -> None:
+    # An id-less device can't be keyed; it must be skipped, not surfaced as
+    # vehicle id "None" (which would alias every id-less device together).
+    idless = {"uniqueId": "u9", "geofenceIds": []}
+    readings = merge_readings([idless, DEVICE_VAN], [POSITION_VAN])
+    assert {r.vehicle.id for r in readings} == {"1"}
+
+
+def test_roster_from_devices_skips_devices_without_an_id() -> None:
+    roster = roster_from_devices([{"uniqueId": "u9"}, DEVICE_VAN])
+    assert set(roster) == {"1"}  # no "None" key for the id-less device
 
 
 def test_roster_from_devices_keys_identities_by_device_id() -> None:
