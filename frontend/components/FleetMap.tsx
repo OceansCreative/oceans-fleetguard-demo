@@ -15,7 +15,7 @@ import { CALM_COLOR, SEVERITY_COLOR } from "@/components/severity";
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
-const WATER = "#aed3ec";
+const SEA = "#a7cde4";
 const EMPTY: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
   features: [],
@@ -23,7 +23,9 @@ const EMPTY: GeoJSON.FeatureCollection = {
 
 // A self-contained vector style drawn from the bundled GeoJSON, used when no
 // remote style is configured. No glyphs are referenced (place names are HTML
-// markers), so it needs no fonts and works fully offline.
+// markers), so it needs no fonts and works fully offline. Styling leans on
+// cartographic conventions — soft sea, a haloed coastline, railway hatching —
+// so the limited offline data still reads as a deliberately designed map.
 const OFFLINE_STYLE: maplibregl.StyleSpecification = {
   version: 8,
   sources: {
@@ -31,40 +33,56 @@ const OFFLINE_STYLE: maplibregl.StyleSpecification = {
     rail: { type: "geojson", data: "/rail.geojson" },
   },
   layers: [
-    { id: "bg", type: "background", paint: { "background-color": WATER } },
+    { id: "bg", type: "background", paint: { "background-color": SEA } },
     {
       id: "land",
       type: "fill",
       source: "land",
-      paint: { "fill-color": "#eef2e6" },
+      paint: { "fill-color": "#f4f1ea" },
     },
+    // Coastline: a soft white halo under a crisp blue-grey edge.
     {
-      id: "land-line",
+      id: "coast-halo",
       type: "line",
       source: "land",
-      paint: { "line-color": "#aebfd2", "line-width": 1 },
+      paint: { "line-color": "#ffffff", "line-width": 3.5, "line-blur": 1.5 },
     },
     {
-      id: "rail",
+      id: "coast",
+      type: "line",
+      source: "land",
+      paint: { "line-color": "#8aa6bb", "line-width": 1.1 },
+    },
+    // Railway: a pale bed with a dashed line on top (classic hatched look).
+    {
+      id: "rail-bed",
       type: "line",
       source: "rail",
-      filter: ["==", ["geometry-type"], "LineString"],
+      filter: ["==", ["get", "kind"], "rail"],
+      layout: { "line-cap": "round" },
+      paint: { "line-color": "#c2c5d4", "line-width": 3 },
+    },
+    {
+      id: "rail-line",
+      type: "line",
+      source: "rail",
+      filter: ["==", ["get", "kind"], "rail"],
       paint: {
-        "line-color": "#6a6f86",
-        "line-width": 1.4,
-        "line-dasharray": [3, 2],
+        "line-color": "#5c627a",
+        "line-width": 1.3,
+        "line-dasharray": [2, 2.5],
       },
     },
     {
       id: "stations",
       type: "circle",
       source: "rail",
-      filter: ["==", ["geometry-type"], "Point"],
+      filter: ["==", ["get", "kind"], "station"],
       paint: {
         "circle-radius": 2.2,
-        "circle-color": "#4a5067",
-        "circle-stroke-color": "#ffffff",
-        "circle-stroke-width": 1,
+        "circle-color": "#ffffff",
+        "circle-stroke-color": "#5c627a",
+        "circle-stroke-width": 1.1,
       },
     },
   ],
@@ -180,33 +198,42 @@ export function FleetMap({
         id: "geofence-fill",
         type: "fill",
         source: "geofence",
-        paint: { "fill-color": "#3b76f0", "fill-opacity": 0.08 },
+        paint: { "fill-color": "#2f6fe0", "fill-opacity": 0.06 },
       });
       map.addLayer({
         id: "geofence-line",
         type: "line",
         source: "geofence",
         paint: {
-          "line-color": "#3b76f0",
-          "line-width": 1.5,
-          "line-dasharray": [2, 2],
+          "line-color": "#2f6fe0",
+          "line-width": 1.4,
+          "line-opacity": 0.8,
+          "line-dasharray": [3, 2],
         },
       });
 
       map.addSource("vehicles", { type: "geojson", data: EMPTY });
+      // Soft glow under the selected vehicle.
+      map.addLayer({
+        id: "vehicle-glow",
+        type: "circle",
+        source: "vehicles",
+        filter: ["==", ["get", "selected"], true],
+        paint: {
+          "circle-radius": 20,
+          "circle-color": ["get", "color"],
+          "circle-opacity": 0.18,
+          "circle-blur": 1,
+        },
+      });
       map.addLayer({
         id: "vehicles",
         type: "circle",
         source: "vehicles",
         paint: {
-          "circle-radius": ["case", ["get", "selected"], 9, 6],
+          "circle-radius": ["case", ["get", "selected"], 8, 5.5],
           "circle-color": ["get", "color"],
-          "circle-stroke-color": [
-            "case",
-            ["get", "selected"],
-            "#1f2a3a",
-            "#ffffff",
-          ],
+          "circle-stroke-color": "#ffffff",
           "circle-stroke-width": ["case", ["get", "selected"], 3, 1.5],
         },
       });
@@ -228,12 +255,16 @@ export function FleetMap({
         fetch("/labels.geojson")
           .then((response) => response.json())
           .then((collection: GeoJSON.FeatureCollection) => {
+            const MAJOR = new Set(["Matsue", "Yonago", "Izumo", "Yasugi"]);
             for (const feature of collection.features) {
               if (feature.geometry.type !== "Point") continue;
               const kind = String(feature.properties?.kind ?? "city");
+              const name = String(feature.properties?.name ?? "");
               const element = document.createElement("div");
-              element.className = `map-label map-label--${kind}`;
-              element.textContent = String(feature.properties?.name ?? "");
+              element.className = `map-label map-label--${kind}${
+                MAJOR.has(name) ? " map-label--major" : ""
+              }`;
+              element.textContent = name;
               markers.push(
                 new maplibregl.Marker({ element })
                   .setLngLat(feature.geometry.coordinates as [number, number])
