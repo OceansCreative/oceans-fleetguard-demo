@@ -192,7 +192,43 @@ export function FleetMap({
     );
 
     const markers: maplibregl.Marker[] = [];
-    map.on("load", () => {
+    let activated = false;
+    // Whether the *active* style is the bundled offline one (true from the
+    // start when no remote style is configured, or after a fallback).
+    let offlineMode = MAP_STYLE_URL === null;
+
+    const addLabels = () => {
+      fetch("/labels.geojson")
+        .then((response) => response.json())
+        .then((collection: GeoJSON.FeatureCollection) => {
+          const MAJOR = new Set(["Matsue", "Yonago", "Izumo", "Yasugi"]);
+          for (const feature of collection.features) {
+            if (feature.geometry.type !== "Point") continue;
+            const kind = String(feature.properties?.kind ?? "city");
+            const name = String(feature.properties?.name ?? "");
+            const element = document.createElement("div");
+            element.className = `map-label map-label--${kind}${
+              MAJOR.has(name) ? " map-label--major" : ""
+            }`;
+            element.textContent = name;
+            markers.push(
+              new maplibregl.Marker({ element })
+                .setLngLat(feature.geometry.coordinates as [number, number])
+                .addTo(map),
+            );
+          }
+        })
+        .catch(() => {
+          /* labels are optional */
+        });
+    };
+
+    // Add the live overlays (geofence + vehicles) on top of whichever basemap
+    // finished loading. Idempotent — guarded so a fallback can't double-add.
+    const activate = () => {
+      if (activated) return;
+      activated = true;
+
       map.addSource("geofence", { type: "geojson", data: EMPTY });
       map.addLayer({
         id: "geofence-fill",
@@ -249,33 +285,9 @@ export function FleetMap({
         map.getCanvas().style.cursor = "";
       });
 
-      // Place / water labels as HTML markers — only for the offline style; a
-      // remote vector style brings its own labels.
-      if (MAP_STYLE_URL === null) {
-        fetch("/labels.geojson")
-          .then((response) => response.json())
-          .then((collection: GeoJSON.FeatureCollection) => {
-            const MAJOR = new Set(["Matsue", "Yonago", "Izumo", "Yasugi"]);
-            for (const feature of collection.features) {
-              if (feature.geometry.type !== "Point") continue;
-              const kind = String(feature.properties?.kind ?? "city");
-              const name = String(feature.properties?.name ?? "");
-              const element = document.createElement("div");
-              element.className = `map-label map-label--${kind}${
-                MAJOR.has(name) ? " map-label--major" : ""
-              }`;
-              element.textContent = name;
-              markers.push(
-                new maplibregl.Marker({ element })
-                  .setLngLat(feature.geometry.coordinates as [number, number])
-                  .addTo(map),
-              );
-            }
-          })
-          .catch(() => {
-            /* labels are optional */
-          });
-      }
+      // Bundled place / water labels only when the offline basemap is active;
+      // a remote vector style brings its own labels.
+      if (offlineMode) addLabels();
 
       ready.current = true;
       const { vehicles: v, selectedId: s } = dataRef.current;
@@ -285,9 +297,26 @@ export function FleetMap({
       (map.getSource("geofence") as maplibregl.GeoJSONSource).setData(
         geofenceData(v, s),
       );
-    });
+    };
+
+    map.on("load", activate);
+
+    // If a remote style is configured but never loads — bad/blocked key,
+    // offline network — drop to the bundled offline basemap rather than show a
+    // blank map. (When the remote style loads normally, `activated` is already
+    // true and this is a no-op.)
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    if (MAP_STYLE_URL !== null) {
+      fallbackTimer = setTimeout(() => {
+        if (activated) return;
+        offlineMode = true;
+        map.setStyle(OFFLINE_STYLE);
+        map.once("idle", activate);
+      }, 8000);
+    }
 
     return () => {
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       for (const marker of markers) marker.remove();
       map.remove();
       mapRef.current = null;
