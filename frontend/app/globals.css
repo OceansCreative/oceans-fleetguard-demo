@@ -510,12 +510,10 @@ button {
   color: var(--text-dim);
   background: var(--surface-soft);
 }
-/* Soft dotted backdrop so the map still reads as a map when tiles are
-   unavailable (e.g. OSM blocked) instead of a flat grey rectangle. */
+/* Water colour shows through wherever neither OSM tiles nor the bundled
+   land polygons cover — so an offline map still reads as land vs. sea. */
 .leaflet-container {
-  background:
-    radial-gradient(#dbe4f1 1px, transparent 1.6px) 0 0 / 24px 24px,
-    linear-gradient(180deg, #f3f7fd, #eaf1fb) !important;
+  background: #cfe2f3 !important;
   font-family: var(--font);
 }
 .leaflet-control-zoom a {

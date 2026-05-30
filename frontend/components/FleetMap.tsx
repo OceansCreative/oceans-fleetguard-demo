@@ -1,10 +1,14 @@
 "use client";
 
 import L from "leaflet";
+import type { GeoJsonObject } from "geojson";
+import { useEffect, useState } from "react";
 import {
   Circle,
   CircleMarker,
+  GeoJSON,
   MapContainer,
+  Pane,
   Popup,
   TileLayer,
 } from "react-leaflet";
@@ -20,6 +24,13 @@ import "leaflet/dist/leaflet.css";
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
   ._getIconUrl;
 
+const LAND_STYLE = {
+  color: "#bccdde",
+  weight: 1,
+  fillColor: "#edf1e8",
+  fillOpacity: 1,
+};
+
 export function FleetMap({
   vehicles,
   selectedId,
@@ -29,6 +40,26 @@ export function FleetMap({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
+  // A small, bundled vector basemap of the demo area (Matsue / Yonago, incl.
+  // Lake Shinji & Nakaumi). It sits in a pane *below* the OSM tiles, so a live
+  // network shows full street tiles while an offline/locked-down one still
+  // renders recognizable coastline and water instead of a blank rectangle.
+  const [land, setLand] = useState<GeoJsonObject | null>(null);
+  useEffect(() => {
+    let active = true;
+    fetch("/basemap.geojson")
+      .then((response) => response.json())
+      .then((data: GeoJsonObject) => {
+        if (active) setLand(data);
+      })
+      .catch(() => {
+        /* No basemap is fine; the map still works with tiles or markers. */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const selectedGeofence =
     vehicles.find((vehicle) => vehicle.id === selectedId)?.geofence ?? null;
   return (
@@ -37,8 +68,13 @@ export function FleetMap({
       zoom={MAP_ZOOM}
       style={{ height: "100%", width: "100%" }}
     >
+      <Pane name="basemap" style={{ zIndex: 150 }}>
+        {land !== null && (
+          <GeoJSON data={land} interactive={false} style={() => LAND_STYLE} />
+        )}
+      </Pane>
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Boundaries: 国土数値情報（国土交通省）'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {selectedGeofence !== null && (
