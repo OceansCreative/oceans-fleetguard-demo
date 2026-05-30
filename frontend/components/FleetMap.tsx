@@ -15,7 +15,7 @@ import {
 } from "react-leaflet";
 import type { Feature, Point } from "geojson";
 
-import { MAP_CENTER, MAP_ZOOM } from "@/lib/config";
+import { MAP_CENTER, MAP_ZOOM, TILE_ATTRIBUTION, TILE_URL } from "@/lib/config";
 import { formatSpeedKmh, highestSeverity } from "@/lib/format";
 import type { Vehicle } from "@/lib/types";
 import { CALM_COLOR, SEVERITY_COLOR } from "@/components/severity";
@@ -126,10 +126,7 @@ export function FleetMap({
           <GeoJSON data={labels} pointToLayer={labelMarker} />
         )}
       </Pane>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Boundaries: 国土数値情報（国土交通省） | Rail: ekidata.jp'
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
+      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} />
       <ScaleControl position="bottomleft" imperial={false} />
       {selectedGeofence !== null && (
         // The allowed area the geofence rule checks the selected vehicle against.
