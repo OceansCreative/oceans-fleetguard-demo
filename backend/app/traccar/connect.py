@@ -7,6 +7,7 @@ with injected fakes. This module is the only place that talks to a real socket.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -25,7 +26,10 @@ def build_ws_connector(client: TraccarClient, ws_url: str) -> Connect:
 
     @asynccontextmanager
     async def _connect() -> AsyncIterator[Frames]:
-        cookie = client.session_cookie()
+        # ``session_cookie`` makes a blocking HTTP POST; run it off the event
+        # loop so a slow or stalled Traccar login during a (re)connect can't
+        # freeze every other task (dashboard broadcasts, ``/health``).
+        cookie = await asyncio.to_thread(client.session_cookie)
         async with ws_connect(ws_url, additional_headers={"Cookie": cookie}) as ws:
             yield ws
 

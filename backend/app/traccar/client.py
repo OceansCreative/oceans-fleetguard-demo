@@ -8,9 +8,12 @@ drive it with a mock transport instead of a live server.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_S = 10.0
 
@@ -49,7 +52,16 @@ class TraccarClient:
         )
         response.raise_for_status()
         session_id = self._client.cookies.get("JSESSIONID")
-        return f"JSESSIONID={session_id}" if session_id else ""
+        if not session_id:
+            # A 2xx with no JSESSIONID almost always means bad credentials.
+            # Surface it: otherwise the stream silently reconnects forever with
+            # an empty cookie, getting 401s, with nothing pointing at the cause.
+            logger.warning(
+                "Traccar login succeeded but set no JSESSIONID cookie; "
+                "check TRACCAR_USERNAME/TRACCAR_PASSWORD"
+            )
+            return ""
+        return f"JSESSIONID={session_id}"
 
     def fetch_devices(self) -> list[dict[str, Any]]:
         """Return all devices known to Traccar (``GET /api/devices``)."""

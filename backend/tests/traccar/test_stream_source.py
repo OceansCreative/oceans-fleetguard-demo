@@ -7,10 +7,12 @@ import json
 from typing import Any
 
 import httpx
+from app.traccar.client import TraccarClient
 from app.traccar.normalize import roster_from_devices
 from app.traccar.stream_source import TraccarStreamSource
 
 from tests.traccar._helpers import (
+    DEVICE_TRUCK,
     DEVICE_VAN,
     POSITION_VAN,
     build_client,
@@ -144,6 +146,45 @@ def test_aclose_before_start_is_safe() -> None:
     )
     asyncio.run(source.aclose())  # no background task yet; must not raise
     assert source.snapshot() == []
+
+
+def test_roster_is_refreshed_after_startup() -> None:
+    park = asyncio.Event()
+    devices = [DEVICE_VAN]  # the roster Traccar serves; grows mid-run below
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/devices":
+            return httpx.Response(200, json=devices)
+        return httpx.Response(200, json=[])  # positions/geofences unused here
+
+    client = TraccarClient(
+        "http://traccar.test",
+        "demo",
+        "secret",
+        client=httpx.Client(
+            transport=httpx.MockTransport(handler), base_url="http://traccar.test"
+        ),
+    )
+
+    async def scenario() -> set[str]:
+        source = TraccarStreamSource(
+            client,
+            connect=lambda: _FakeFrames([], park=park),
+            roster_refresh_interval_s=0.0,  # refresh as fast as the loop allows
+        )
+        await source.start()
+        assert set(source._roster) == {"1"}  # only the van at startup
+        devices.append(DEVICE_TRUCK)  # a vehicle appears after launch
+        for _ in range(50):
+            await asyncio.sleep(0.01)
+            if set(source._roster) == {"1", "2"}:
+                break
+        roster = set(source._roster)
+        await source.aclose()
+        return roster
+
+    # The periodic refresh must pick up the newly added vehicle.
+    assert asyncio.run(scenario()) == {"1", "2"}
 
 
 def test_start_tolerates_a_failed_roster_fetch() -> None:

@@ -78,11 +78,17 @@ def test_session_cookie_posts_credentials_and_returns_jsessionid() -> None:
     assert "password=secret" in captured["body"]
 
 
-def test_session_cookie_is_empty_when_no_cookie_is_set() -> None:
+def test_session_cookie_is_empty_and_warns_when_no_cookie_is_set(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"id": 1})
 
-    assert build_client(handler).session_cookie() == ""
+    with caplog.at_level("WARNING"):
+        assert build_client(handler).session_cookie() == ""
+
+    # The misconfiguration must be visible, not swallowed into a silent retry.
+    assert any("JSESSIONID" in record.message for record in caplog.records)
 
 
 def test_fetch_geofences_returns_parsed_json() -> None:

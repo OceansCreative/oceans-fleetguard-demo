@@ -4,8 +4,10 @@ Traccar streams updates over ``ws://<host>/api/socket`` once authenticated.
 This source runs a background task that consumes those frames and folds them
 into an in-memory cache via the pure helpers in :mod:`app.traccar.normalize`;
 :meth:`snapshot` just reads that cache, so REST reads stay cheap and never
-touch the network. The device roster (names/plates) is primed once over REST,
-since the socket frames carry only positions and status.
+touch the network. The device roster (names/plates/geofences) is primed over
+REST at startup and refreshed periodically thereafter, since the socket frames
+carry only positions and status — so vehicles added or reassigned after launch
+are eventually picked up.
 
 The WebSocket connection is supplied as an injected ``connect`` factory, which
 keeps the source decoupled from a real server: tests feed it canned frames.
@@ -38,6 +40,7 @@ Frames = AsyncIterable[str | bytes]
 Connect = Callable[[], AbstractAsyncContextManager[Frames]]
 
 _RECONNECT_DELAY_S = 3.0
+_ROSTER_REFRESH_INTERVAL_S = 60.0
 
 
 class TraccarStreamSource:
@@ -49,17 +52,21 @@ class TraccarStreamSource:
         connect: Connect,
         *,
         reconnect_delay_s: float = _RECONNECT_DELAY_S,
+        roster_refresh_interval_s: float = _ROSTER_REFRESH_INTERVAL_S,
     ) -> None:
         self._client = client
         self._connect = connect
         self._reconnect_delay_s = reconnect_delay_s
+        self._roster_refresh_interval_s = roster_refresh_interval_s
         self._roster: dict[str, FleetVehicle] = {}
         self._samples: dict[str, VehicleSample] = {}
         self._task: asyncio.Task[None] | None = None
+        self._roster_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
-        self._refresh_roster()
+        await asyncio.to_thread(self._refresh_roster)
         self._task = asyncio.create_task(self._run())
+        self._roster_task = asyncio.create_task(self._refresh_roster_periodically())
 
     def advance(self, dt_seconds: float, now: datetime) -> None:
         """No-op: this source is fed by the background stream, not by ticks."""
@@ -68,12 +75,22 @@ class TraccarStreamSource:
         return list(self._samples.values())
 
     async def aclose(self) -> None:
-        if self._task is not None:
-            self._task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self._task
-            self._task = None
+        for task in (self._task, self._roster_task):
+            if task is not None:
+                task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+        self._task = None
+        self._roster_task = None
         self._client.close()
+
+    async def _refresh_roster_periodically(self) -> None:
+        # Re-prime the roster on an interval so vehicles added, renamed, or
+        # assigned a geofence after startup are eventually reflected. The fetch
+        # is blocking, so it runs off the event loop.
+        while True:
+            await asyncio.sleep(self._roster_refresh_interval_s)
+            await asyncio.to_thread(self._refresh_roster)
 
     def _refresh_roster(self) -> None:
         try:
