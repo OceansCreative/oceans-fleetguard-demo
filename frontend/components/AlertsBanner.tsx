@@ -11,17 +11,19 @@ export function AlertsBanner({
     return null;
   }
   return (
-    <div
-      role="alert"
-      style={{
-        background: "#dc2626",
-        color: "white",
-        padding: "0.5rem 1rem",
-        fontWeight: 600,
-      }}
-    >
-      🚨 {flagged.length} vehicle{flagged.length > 1 ? "s" : ""} with active
-      theft alerts: {flagged.map((v) => v.name).join(", ")}
+    <div role="alert" className="banner">
+      <span className="banner-chip" aria-hidden>
+        🚨
+      </span>
+      <span>
+        <strong>
+          {flagged.length} vehicle{flagged.length > 1 ? "s" : ""}
+        </strong>{" "}
+        with active theft alerts —{" "}
+        <span className="banner-names">
+          {flagged.map((v) => v.name).join(", ")}
+        </span>
+      </span>
     </div>
   );
 }

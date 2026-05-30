@@ -3,9 +3,9 @@
 import type { AlertSeverity } from "@/lib/types";
 
 export const SEVERITY_COLOR: Record<AlertSeverity, string> = {
-  critical: "#dc2626",
-  warning: "#d97706",
-  info: "#2563eb",
+  critical: "#fb5566",
+  warning: "#f6a609",
+  info: "#38bdf8",
 };
 
-export const CALM_COLOR = "#16a34a";
+export const CALM_COLOR = "#34d399";

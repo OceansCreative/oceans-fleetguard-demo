@@ -13,7 +13,7 @@ export function VehicleList({
 }): React.JSX.Element {
   const ordered = sortByUrgency(vehicles);
   return (
-    <ul style={{ listStyle: "none", margin: 0, padding: 0 }}>
+    <ul className="vlist">
       {ordered.map((vehicle) => {
         const severity = highestSeverity(vehicle);
         const dot = severity === null ? CALM_COLOR : SEVERITY_COLOR[severity];
@@ -24,30 +24,28 @@ export function VehicleList({
               type="button"
               onClick={() => onSelect(vehicle.id)}
               aria-pressed={selected}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                border: "none",
-                borderLeft: `4px solid ${dot}`,
-                background: selected ? "#eef2ff" : "transparent",
-                padding: "0.6rem 0.8rem",
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "0.5rem",
-              }}
+              className={`vrow${selected ? " vrow--selected" : ""}`}
             >
-              <span>
-                <strong>{vehicle.name}</strong>
-                <br />
-                <small style={{ color: "#6b7280" }}>
+              <span
+                className="vrow-dot"
+                style={{ background: dot }}
+                aria-hidden
+              />
+              <span className="vrow-main">
+                <span className="vrow-name">{vehicle.name}</span>
+                <span className="vrow-meta">
                   {formatSpeedKmh(vehicle.position.speed_mps)}
-                  {vehicle.position.ignition_on ? "" : " · ignition off"}
-                </small>
+                  {!vehicle.position.ignition_on && (
+                    <span className="chip-off">ign off</span>
+                  )}
+                </span>
               </span>
               {vehicle.alerts.length > 0 && (
-                <span aria-label={`${vehicle.alerts.length} alerts`}>
-                  🚨 {vehicle.alerts.length}
+                <span
+                  className="vrow-alerts"
+                  aria-label={`${vehicle.alerts.length} alerts`}
+                >
+                  ⚠ {vehicle.alerts.length}
                 </span>
               )}
             </button>

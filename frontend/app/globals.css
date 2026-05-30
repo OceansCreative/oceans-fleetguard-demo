@@ -1,13 +1,504 @@
-html,
-body {
-  margin: 0;
-  padding: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    sans-serif;
+/* ------------------------------------------------------------------ *
+ * FleetGuard — dark "operations control room" theme.
+ * Design tokens first, then component classes used across the app.
+ * ------------------------------------------------------------------ */
+
+:root {
+  --bg: #0a0f1c;
+  --surface: #0f1626;
+  --surface-2: #131c30;
+  --surface-3: #18243c;
+  --border: #1f2c47;
+  --border-soft: #172238;
+
+  --text: #e6edf7;
+  --text-muted: #8aa0c0;
+  --text-dim: #5c7298;
+
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+
+  --critical: #fb5566;
+  --warning: #f6a609;
+  --info: #38bdf8;
+  --calm: #34d399;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 1px 0 rgba(255, 255, 255, 0.03);
+
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Background gets a faint top glow so the dark UI doesn't read as flat. */
+body {
+  background:
+    radial-gradient(
+      1200px 600px at 18% -10%,
+      rgba(56, 189, 248, 0.08),
+      transparent 60%
+    ),
+    var(--bg);
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.28);
+}
+
+/* ---- Scrollbars (panels) ---------------------------------------- */
+.scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ---- App shell --------------------------------------------------- */
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 1.1rem;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 1.05rem;
+  background:
+    radial-gradient(circle at 30% 25%, #7dd3fc, transparent 55%),
+    linear-gradient(140deg, var(--accent-strong), #2563eb);
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.35),
+    0 6px 16px rgba(14, 165, 233, 0.35);
+}
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+.brand-name {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 1.02rem;
+}
+.brand-sub {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* ---- Connection pill -------------------------------------------- */
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.32rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.conn-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+}
+.conn--live {
+  color: var(--calm);
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.1);
+}
+.conn--live .conn-dot {
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.6);
+  animation: pulse 1.8s infinite;
+}
+.conn--connecting {
+  color: var(--text-muted);
+}
+.conn--reconnecting {
+  color: var(--warning);
+  border-color: rgba(246, 166, 9, 0.35);
+  background: rgba(246, 166, 9, 0.1);
+}
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(52, 211, 153, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+}
+
+/* ---- Alert banner ----------------------------------------------- */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 1.1rem;
+  background: linear-gradient(
+    90deg,
+    rgba(251, 85, 102, 0.18),
+    rgba(251, 85, 102, 0.05)
+  );
+  border-bottom: 1px solid rgba(251, 85, 102, 0.28);
+  color: #ffd9dd;
+  font-size: 0.86rem;
+}
+.banner-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: rgba(251, 85, 102, 0.22);
+  flex: none;
+}
+.banner strong {
+  color: #fff;
+}
+.banner-names {
+  color: #ffb9c1;
+}
+
+/* ---- Body layout ------------------------------------------------- */
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.col-list {
+  width: 296px;
+  flex: none;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+}
+.col-map {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+.col-detail {
+  width: 340px;
+  flex: none;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  padding: 1.1rem;
+}
+
+.col-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.85rem 1rem 0.55rem;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+.col-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+.col-count {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+/* ---- Vehicle list ------------------------------------------------ */
+.vlist {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0.5rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.vrow {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--surface-2);
+  color: var(--text);
+  transition:
+    background 0.14s ease,
+    border-color 0.14s ease,
+    transform 0.14s ease;
+}
+.vrow:hover {
+  background: var(--surface-3);
+}
+.vrow--selected {
+  background: var(--surface-3);
+  border-color: rgba(56, 189, 248, 0.5);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.vrow-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: none;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+}
+.vrow-main {
+  flex: 1;
+  min-width: 0;
+}
+.vrow-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.vrow-meta {
+  margin-top: 2px;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.chip-off {
+  color: var(--warning);
+  border: 1px solid rgba(246, 166, 9, 0.4);
+  background: rgba(246, 166, 9, 0.12);
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.vrow-alerts {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #ffd9dd;
+  background: rgba(251, 85, 102, 0.16);
+  border: 1px solid rgba(251, 85, 102, 0.32);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+}
+
+/* ---- Detail panel ------------------------------------------------ */
+.detail-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.6rem;
+  color: var(--text-dim);
+  text-align: center;
+}
+.detail-empty-mark {
+  font-size: 1.6rem;
+  opacity: 0.5;
+}
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.detail-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.detail-title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  letter-spacing: 0.01em;
+}
+.detail-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.drow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.8rem;
+}
+.drow + .drow {
+  border-top: 1px solid var(--border-soft);
+}
+.drow-label {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.drow-value {
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+.section-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+  font-weight: 700;
+  margin-bottom: -0.4rem;
+}
+.detail-ok {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--calm);
+  font-size: 0.85rem;
+  margin: 0;
+}
+.alert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.alert-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+}
+.alert-reason {
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+/* ---- Severity badge --------------------------------------------- */
+.badge {
+  align-self: flex-start;
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #fff;
+}
+
+/* ---- Map --------------------------------------------------------- */
+.map-loading {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--text-dim);
+  background: var(--bg);
+}
+/* Dotted-grid backdrop so the map reads as intentional when offline
+   (e.g. OSM tiles blocked) instead of a blank grey rectangle. */
+.leaflet-container {
+  background:
+    radial-gradient(
+      circle at 50% 35%,
+      rgba(56, 189, 248, 0.07),
+      transparent 60%
+    ),
+    radial-gradient(rgba(148, 163, 184, 0.16) 1px, transparent 1.5px) 0 0 / 26px
+      26px,
+    #0a1120 !important;
+  font-family: var(--font);
+}
+.leaflet-control-zoom a {
+  background: var(--surface-2) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+.leaflet-control-zoom a:hover {
+  background: var(--surface-3) !important;
+}
+.leaflet-bar {
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow) !important;
+}
+.leaflet-control-attribution {
+  background: rgba(10, 17, 32, 0.7) !important;
+  color: var(--text-dim) !important;
+}
+.leaflet-control-attribution a {
+  color: var(--text-muted) !important;
+}
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: var(--surface-3) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow) !important;
+}
+.leaflet-popup-content-wrapper {
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
 }

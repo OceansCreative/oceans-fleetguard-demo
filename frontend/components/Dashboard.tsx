@@ -13,20 +13,14 @@ const FleetMap = dynamic(
   () => import("@/components/FleetMap").then((m) => m.FleetMap),
   {
     ssr: false,
-    loading: () => <div style={{ padding: "1rem" }}>Loading map…</div>,
+    loading: () => <div className="map-loading">Loading map…</div>,
   },
 );
 
 const CONNECTION_LABEL = {
-  connecting: "● connecting",
-  live: "● live",
-  reconnecting: "● reconnecting…",
-} as const;
-
-const CONNECTION_COLOR = {
-  connecting: "#9ca3af",
-  live: "#16a34a",
-  reconnecting: "#d97706",
+  connecting: "connecting",
+  live: "live",
+  reconnecting: "reconnecting",
 } as const;
 
 export function Dashboard(): React.JSX.Element {
@@ -36,32 +30,31 @@ export function Dashboard(): React.JSX.Element {
     vehicles.find((vehicle) => vehicle.id === selectedId) ?? null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "0.6rem 1rem",
-          borderBottom: "1px solid #e5e7eb",
-        }}
-      >
-        <strong>🛰️ FleetGuard</strong>
-        <span style={{ color: CONNECTION_COLOR[connection] }}>
+    <div className="shell">
+      <header className="app-header">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden>
+            🛰
+          </span>
+          <span className="brand-text">
+            <span className="brand-name">FleetGuard</span>
+            <span className="brand-sub">Fleet Operations</span>
+          </span>
+        </div>
+        <span className={`conn conn--${connection}`}>
+          <span className="conn-dot" />
           {CONNECTION_LABEL[connection]}
         </span>
       </header>
 
       <AlertsBanner vehicles={vehicles} />
 
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <aside
-          style={{
-            width: 280,
-            borderRight: "1px solid #e5e7eb",
-            overflowY: "auto",
-          }}
-        >
+      <div className="body">
+        <aside className="col-list scroll">
+          <div className="col-head">
+            <span className="col-title">Fleet</span>
+            <span className="col-count">{vehicles.length} vehicles</span>
+          </div>
           <VehicleList
             vehicles={vehicles}
             selectedId={selectedId}
@@ -69,7 +62,7 @@ export function Dashboard(): React.JSX.Element {
           />
         </aside>
 
-        <main style={{ flex: 1, minWidth: 0 }}>
+        <main className="col-map">
           <FleetMap
             vehicles={vehicles}
             selectedId={selectedId}
@@ -77,14 +70,7 @@ export function Dashboard(): React.JSX.Element {
           />
         </main>
 
-        <aside
-          style={{
-            width: 320,
-            borderLeft: "1px solid #e5e7eb",
-            padding: "1rem",
-            overflowY: "auto",
-          }}
-        >
+        <aside className="col-detail scroll">
           <VehicleDetail vehicle={selected} />
         </aside>
       </div>
