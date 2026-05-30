@@ -16,7 +16,16 @@ boundaries), Ministry of Land, Infrastructure, Transport and Tourism (Japan) —
 国土数値情報（行政区域データ）国土交通省 — via the
 [`niiyz/JapanCityGeoJson`](https://github.com/niiyz/JapanCityGeoJson) dataset.
 
-Five municipalities (Matsue 32201, Izumo 32203, Yasugi 32206, Yonago 31202,
-Sakaiminato 31204) were cropped to the demo bounding box and simplified
-(Douglas–Peucker, ~110 m tolerance) down to ~14 KB. Attribution is shown in the
-map's attribution control.
+Thirteen municipalities around the demo area (Matsue, Izumo, Oda, Yasugi,
+Unnan, Okuizumo, Yonago, Sakaiminato, Kotoura, Hiezu, Daisen, Nanbu, Hoki) were
+cropped to the demo bounding box and simplified (Douglas–Peucker, ~28 m
+tolerance). Attribution is shown in the map's attribution control.
+
+## `rail.geojson` — railway lines & stations
+
+Railway routes and station points for the same area, rendered beneath the tile
+layer so the offline map shows the rail network too. Built from the
+[`piuccio/open-data-jp-railway-lines`](https://github.com/piuccio/open-data-jp-railway-lines)
+dataset, which is derived from **[ekidata.jp](https://ekidata.jp/)** station/line
+data (lines are drawn by connecting each line's stations in order, then clipped
+to the demo bounding box). Credited in the map attribution.

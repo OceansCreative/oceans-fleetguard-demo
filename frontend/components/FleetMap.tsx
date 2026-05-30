@@ -30,6 +30,21 @@ const LAND_STYLE = {
   fillColor: "#edf1e8",
   fillOpacity: 1,
 };
+const RAIL_STYLE = {
+  color: "#6a6f86",
+  weight: 1.6,
+  opacity: 0.85,
+  dashArray: "5 3",
+};
+const stationDot = (_feature: unknown, latlng: L.LatLng): L.CircleMarker =>
+  L.circleMarker(latlng, {
+    pane: "basemap",
+    radius: 2.2,
+    weight: 1,
+    color: "#ffffff",
+    fillColor: "#4a5067",
+    fillOpacity: 1,
+  });
 
 export function FleetMap({
   vehicles,
@@ -45,16 +60,20 @@ export function FleetMap({
   // network shows full street tiles while an offline/locked-down one still
   // renders recognizable coastline and water instead of a blank rectangle.
   const [land, setLand] = useState<GeoJsonObject | null>(null);
+  const [rail, setRail] = useState<GeoJsonObject | null>(null);
   useEffect(() => {
     let active = true;
-    fetch("/basemap.geojson")
-      .then((response) => response.json())
-      .then((data: GeoJsonObject) => {
-        if (active) setLand(data);
-      })
-      .catch(() => {
-        /* No basemap is fine; the map still works with tiles or markers. */
-      });
+    const load = (path: string, set: (d: GeoJsonObject) => void) =>
+      fetch(path)
+        .then((response) => response.json())
+        .then((data: GeoJsonObject) => {
+          if (active) set(data);
+        })
+        .catch(() => {
+          /* A missing layer is fine; the map still works without it. */
+        });
+    load("/basemap.geojson", setLand);
+    load("/rail.geojson", setRail); // railway lines + stations (ekidata.jp)
     return () => {
       active = false;
     };
@@ -72,9 +91,17 @@ export function FleetMap({
         {land !== null && (
           <GeoJSON data={land} interactive={false} style={() => LAND_STYLE} />
         )}
+        {rail !== null && (
+          <GeoJSON
+            data={rail}
+            interactive={false}
+            style={() => RAIL_STYLE}
+            pointToLayer={stationDot}
+          />
+        )}
       </Pane>
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Boundaries: 国土数値情報（国土交通省）'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Boundaries: 国土数値情報（国土交通省） | Rail: ekidata.jp'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {selectedGeofence !== null && (
