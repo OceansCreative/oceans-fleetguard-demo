@@ -47,10 +47,10 @@ export function FleetMap({
           center={[selectedGeofence.lat, selectedGeofence.lon]}
           radius={selectedGeofence.radius_m}
           pathOptions={{
-            color: "#38bdf8",
+            color: "#3b76f0",
             weight: 1.5,
             dashArray: "6 6",
-            fillColor: "#38bdf8",
+            fillColor: "#3b76f0",
             fillOpacity: 0.08,
           }}
         />
@@ -65,10 +65,10 @@ export function FleetMap({
             center={[vehicle.position.lat, vehicle.position.lon]}
             radius={selected ? 11 : 8}
             pathOptions={{
-              color: selected ? "#f8fafc" : color,
-              weight: selected ? 3 : 1,
+              color: selected ? "#1f2a3a" : "#ffffff",
+              weight: selected ? 3 : 1.5,
               fillColor: color,
-              fillOpacity: 0.9,
+              fillOpacity: 0.95,
             }}
             eventHandlers={{ click: () => onSelect(vehicle.id) }}
           >

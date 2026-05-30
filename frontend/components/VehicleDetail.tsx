@@ -35,7 +35,7 @@ export function VehicleDetail({
   }
   const { position } = vehicle;
   const idle = !position.ignition_on;
-  const dotColor = vehicle.alerts.length > 0 ? "#fb5566" : "#34d399";
+  const dotColor = vehicle.alerts.length > 0 ? "#ef4d54" : "#22c55e";
   return (
     <div className="detail">
       <div className="detail-title">
