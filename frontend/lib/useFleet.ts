@@ -23,8 +23,17 @@ export function useFleet(): FleetState {
 
   useEffect(() => {
     const controller = new AbortController();
+    // The socket sends a snapshot on connect, which can beat the REST seed.
+    // Once a live frame has landed, drop the (now staler) REST response so it
+    // can't flash older positions over the live ones.
+    let liveReceived = false;
+
     fetchVehicles(controller.signal)
-      .then(setVehicles)
+      .then((seed) => {
+        if (!liveReceived) {
+          setVehicles(seed);
+        }
+      })
       .catch(() => {
         /* WebSocket will deliver the first snapshot if REST is unavailable. */
       });
@@ -36,6 +45,7 @@ export function useFleet(): FleetState {
         try {
           const next = parsePositions(JSON.parse(data as string));
           if (next !== null) {
+            liveReceived = true;
             setVehicles(next);
           }
         } catch {

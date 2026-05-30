@@ -254,6 +254,14 @@ def test_to_vehicle_has_no_geofence_when_device_assigns_none() -> None:
     assert to_vehicle(DEVICE_TRUCK, geofences_by_id(GEOFENCES)).geofence is None
 
 
+def test_to_vehicle_ignores_geofence_ids_with_no_circular_match() -> None:
+    # The device is assigned only the polygon geofence (id 11), which is dropped
+    # from the circle lookup, so _pick_geofence must scan its ids and still
+    # fall through to None rather than attach a non-circular fence.
+    device = {**DEVICE_VAN, "geofenceIds": [11]}
+    assert to_vehicle(device, geofences_by_id(GEOFENCES)).geofence is None
+
+
 def test_merge_readings_attaches_geofences() -> None:
     readings = merge_readings(DEVICES, POSITIONS, geofences_by_id(GEOFENCES))
     van = next(r for r in readings if r.vehicle.id == "1")
