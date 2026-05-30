@@ -1,71 +1,135 @@
 "use client";
 
-import L from "leaflet";
-import type { GeoJsonObject } from "geojson";
-import { useEffect, useState } from "react";
-import {
-  Circle,
-  CircleMarker,
-  GeoJSON,
-  MapContainer,
-  Pane,
-  Popup,
-  ScaleControl,
-  TileLayer,
-} from "react-leaflet";
-import type { Feature, Point } from "geojson";
+import maplibregl from "maplibre-gl";
+import { useEffect, useRef } from "react";
 
-import { MAP_CENTER, MAP_ZOOM, TILE_ATTRIBUTION, TILE_URL } from "@/lib/config";
-import { formatSpeedKmh, highestSeverity } from "@/lib/format";
+import {
+  MAP_ATTRIBUTION,
+  MAP_CENTER,
+  MAP_STYLE_URL,
+  MAP_ZOOM,
+} from "@/lib/config";
+import { highestSeverity } from "@/lib/format";
 import type { Vehicle } from "@/lib/types";
 import { CALM_COLOR, SEVERITY_COLOR } from "@/components/severity";
 
-import "leaflet/dist/leaflet.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 
-// Avoid Leaflet's default-icon 404s; we render CircleMarkers instead.
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
-  ._getIconUrl;
-
-const LAND_STYLE = {
-  color: "#bccdde",
-  weight: 1,
-  fillColor: "#edf1e8",
-  fillOpacity: 1,
+const WATER = "#aed3ec";
+const EMPTY: GeoJSON.FeatureCollection = {
+  type: "FeatureCollection",
+  features: [],
 };
-const RAIL_STYLE = {
-  color: "#6a6f86",
-  weight: 1.6,
-  opacity: 0.85,
-  dashArray: "5 3",
-};
-const stationDot = (_feature: unknown, latlng: L.LatLng): L.CircleMarker =>
-  L.circleMarker(latlng, {
-    pane: "basemap",
-    radius: 2.2,
-    weight: 1,
-    color: "#ffffff",
-    fillColor: "#4a5067",
-    fillOpacity: 1,
-  });
 
-type LabelProps = { name: string; kind: string };
-const labelMarker = (
-  feature: Feature<Point, LabelProps> | undefined,
-  latlng: L.LatLng,
-): L.Marker => {
-  const { name, kind } = feature?.properties ?? { name: "", kind: "city" };
-  return L.marker(latlng, {
-    pane: "basemap",
-    interactive: false,
-    keyboard: false,
-    icon: L.divIcon({
-      className: `map-label map-label--${kind}`,
-      html: `<span>${name}</span>`,
-      iconSize: [0, 0],
-      iconAnchor: [0, 0],
+// A self-contained vector style drawn from the bundled GeoJSON, used when no
+// remote style is configured. No glyphs are referenced (place names are HTML
+// markers), so it needs no fonts and works fully offline.
+const OFFLINE_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    land: { type: "geojson", data: "/basemap.geojson" },
+    rail: { type: "geojson", data: "/rail.geojson" },
+  },
+  layers: [
+    { id: "bg", type: "background", paint: { "background-color": WATER } },
+    {
+      id: "land",
+      type: "fill",
+      source: "land",
+      paint: { "fill-color": "#eef2e6" },
+    },
+    {
+      id: "land-line",
+      type: "line",
+      source: "land",
+      paint: { "line-color": "#aebfd2", "line-width": 1 },
+    },
+    {
+      id: "rail",
+      type: "line",
+      source: "rail",
+      filter: ["==", ["geometry-type"], "LineString"],
+      paint: {
+        "line-color": "#6a6f86",
+        "line-width": 1.4,
+        "line-dasharray": [3, 2],
+      },
+    },
+    {
+      id: "stations",
+      type: "circle",
+      source: "rail",
+      filter: ["==", ["geometry-type"], "Point"],
+      paint: {
+        "circle-radius": 2.2,
+        "circle-color": "#4a5067",
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1,
+      },
+    },
+  ],
+};
+
+/** Approximate a metres-radius circle as a polygon (for the geofence). */
+function circleFeature(
+  lat: number,
+  lon: number,
+  radiusM: number,
+  steps = 72,
+): GeoJSON.Feature {
+  const ring: [number, number][] = [];
+  const earth = 6378137;
+  const latRad = (lat * Math.PI) / 180;
+  for (let i = 0; i <= steps; i++) {
+    const a = (i / steps) * 2 * Math.PI;
+    const dLon =
+      ((radiusM * Math.cos(a)) / (earth * Math.cos(latRad))) * (180 / Math.PI);
+    const dLat = ((radiusM * Math.sin(a)) / earth) * (180 / Math.PI);
+    ring.push([lon + dLon, lat + dLat]);
+  }
+  return {
+    type: "Feature",
+    geometry: { type: "Polygon", coordinates: [ring] },
+    properties: {},
+  };
+}
+
+function vehicleData(
+  vehicles: Vehicle[],
+  selectedId: string | null,
+): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: vehicles.map((vehicle) => {
+      const severity = highestSeverity(vehicle);
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [vehicle.position.lon, vehicle.position.lat],
+        },
+        properties: {
+          id: vehicle.id,
+          color: severity === null ? CALM_COLOR : SEVERITY_COLOR[severity],
+          selected: vehicle.id === selectedId,
+        },
+      };
     }),
-  });
-};
+  };
+}
+
+function geofenceData(
+  vehicles: Vehicle[],
+  selectedId: string | null,
+): GeoJSON.FeatureCollection {
+  const selected = vehicles.find((vehicle) => vehicle.id === selectedId);
+  const fence = selected?.geofence;
+  if (!fence) return EMPTY;
+  return {
+    type: "FeatureCollection",
+    features: [circleFeature(fence.lat, fence.lon, fence.radius_m)],
+  };
+}
 
 export function FleetMap({
   vehicles,
@@ -76,104 +140,151 @@ export function FleetMap({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
-  // A small, bundled vector basemap of the demo area (Matsue / Yonago, incl.
-  // Lake Shinji & Nakaumi). It sits in a pane *below* the OSM tiles, so a live
-  // network shows full street tiles while an offline/locked-down one still
-  // renders recognizable coastline and water instead of a blank rectangle.
-  const [land, setLand] = useState<GeoJsonObject | null>(null);
-  const [rail, setRail] = useState<GeoJsonObject | null>(null);
-  const [labels, setLabels] = useState<GeoJsonObject | null>(null);
+  const container = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const ready = useRef(false);
+  // Keep the latest props reachable from the (stable) map callbacks.
+  const onSelectRef = useRef(onSelect);
+  onSelectRef.current = onSelect;
+  const dataRef = useRef({ vehicles, selectedId });
+  dataRef.current = { vehicles, selectedId };
+  const pannedTo = useRef<string | null>(null);
+
   useEffect(() => {
-    let active = true;
-    const load = (path: string, set: (d: GeoJsonObject) => void) =>
-      fetch(path)
-        .then((response) => response.json())
-        .then((data: GeoJsonObject) => {
-          if (active) set(data);
-        })
-        .catch(() => {
-          /* A missing layer is fine; the map still works without it. */
-        });
-    load("/basemap.geojson", setLand);
-    load("/rail.geojson", setRail); // railway lines + stations (ekidata.jp)
-    load("/labels.geojson", setLabels); // place + water names
+    if (container.current === null) return;
+    const map = new maplibregl.Map({
+      container: container.current,
+      style: MAP_STYLE_URL ?? OFFLINE_STYLE,
+      center: [MAP_CENTER[1], MAP_CENTER[0]],
+      zoom: MAP_ZOOM,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: false }),
+      "top-left",
+    );
+    map.addControl(
+      new maplibregl.ScaleControl({ unit: "metric" }),
+      "bottom-left",
+    );
+    map.addControl(
+      new maplibregl.AttributionControl({ customAttribution: MAP_ATTRIBUTION }),
+      "bottom-right",
+    );
+
+    const markers: maplibregl.Marker[] = [];
+    map.on("load", () => {
+      map.addSource("geofence", { type: "geojson", data: EMPTY });
+      map.addLayer({
+        id: "geofence-fill",
+        type: "fill",
+        source: "geofence",
+        paint: { "fill-color": "#3b76f0", "fill-opacity": 0.08 },
+      });
+      map.addLayer({
+        id: "geofence-line",
+        type: "line",
+        source: "geofence",
+        paint: {
+          "line-color": "#3b76f0",
+          "line-width": 1.5,
+          "line-dasharray": [2, 2],
+        },
+      });
+
+      map.addSource("vehicles", { type: "geojson", data: EMPTY });
+      map.addLayer({
+        id: "vehicles",
+        type: "circle",
+        source: "vehicles",
+        paint: {
+          "circle-radius": ["case", ["get", "selected"], 9, 6],
+          "circle-color": ["get", "color"],
+          "circle-stroke-color": [
+            "case",
+            ["get", "selected"],
+            "#1f2a3a",
+            "#ffffff",
+          ],
+          "circle-stroke-width": ["case", ["get", "selected"], 3, 1.5],
+        },
+      });
+
+      map.on("click", "vehicles", (event) => {
+        const feature = event.features?.[0];
+        if (feature) onSelectRef.current(String(feature.properties.id));
+      });
+      map.on("mouseenter", "vehicles", () => {
+        map.getCanvas().style.cursor = "pointer";
+      });
+      map.on("mouseleave", "vehicles", () => {
+        map.getCanvas().style.cursor = "";
+      });
+
+      // Place / water labels as HTML markers — only for the offline style; a
+      // remote vector style brings its own labels.
+      if (MAP_STYLE_URL === null) {
+        fetch("/labels.geojson")
+          .then((response) => response.json())
+          .then((collection: GeoJSON.FeatureCollection) => {
+            for (const feature of collection.features) {
+              if (feature.geometry.type !== "Point") continue;
+              const kind = String(feature.properties?.kind ?? "city");
+              const element = document.createElement("div");
+              element.className = `map-label map-label--${kind}`;
+              element.textContent = String(feature.properties?.name ?? "");
+              markers.push(
+                new maplibregl.Marker({ element })
+                  .setLngLat(feature.geometry.coordinates as [number, number])
+                  .addTo(map),
+              );
+            }
+          })
+          .catch(() => {
+            /* labels are optional */
+          });
+      }
+
+      ready.current = true;
+      const { vehicles: v, selectedId: s } = dataRef.current;
+      (map.getSource("vehicles") as maplibregl.GeoJSONSource).setData(
+        vehicleData(v, s),
+      );
+      (map.getSource("geofence") as maplibregl.GeoJSONSource).setData(
+        geofenceData(v, s),
+      );
+    });
+
     return () => {
-      active = false;
+      for (const marker of markers) marker.remove();
+      map.remove();
+      mapRef.current = null;
+      ready.current = false;
     };
   }, []);
 
-  const selectedGeofence =
-    vehicles.find((vehicle) => vehicle.id === selectedId)?.geofence ?? null;
-  return (
-    <MapContainer
-      center={MAP_CENTER}
-      zoom={MAP_ZOOM}
-      style={{ height: "100%", width: "100%" }}
-    >
-      <Pane name="basemap" style={{ zIndex: 150 }}>
-        {land !== null && (
-          <GeoJSON data={land} interactive={false} style={() => LAND_STYLE} />
-        )}
-        {rail !== null && (
-          <GeoJSON
-            data={rail}
-            interactive={false}
-            style={() => RAIL_STYLE}
-            pointToLayer={stationDot}
-          />
-        )}
-        {labels !== null && (
-          <GeoJSON data={labels} pointToLayer={labelMarker} />
-        )}
-      </Pane>
-      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} />
-      <ScaleControl position="bottomleft" imperial={false} />
-      {selectedGeofence !== null && (
-        // The allowed area the geofence rule checks the selected vehicle against.
-        <Circle
-          center={[selectedGeofence.lat, selectedGeofence.lon]}
-          radius={selectedGeofence.radius_m}
-          pathOptions={{
-            color: "#3b76f0",
-            weight: 1.5,
-            dashArray: "6 6",
-            fillColor: "#3b76f0",
-            fillOpacity: 0.08,
-          }}
-        />
-      )}
-      {vehicles.map((vehicle) => {
-        const severity = highestSeverity(vehicle);
-        const color = severity === null ? CALM_COLOR : SEVERITY_COLOR[severity];
-        const selected = vehicle.id === selectedId;
-        return (
-          <CircleMarker
-            key={vehicle.id}
-            center={[vehicle.position.lat, vehicle.position.lon]}
-            radius={selected ? 11 : 8}
-            pathOptions={{
-              color: selected ? "#1f2a3a" : "#ffffff",
-              weight: selected ? 3 : 1.5,
-              fillColor: color,
-              fillOpacity: 0.95,
-            }}
-            eventHandlers={{ click: () => onSelect(vehicle.id) }}
-          >
-            <Popup>
-              <strong>{vehicle.name}</strong>
-              <br />
-              {formatSpeedKmh(vehicle.position.speed_mps)}
-              {vehicle.alerts.length > 0 && (
-                <>
-                  <br />
-                  🚨 {vehicle.alerts.length} alert
-                  {vehicle.alerts.length > 1 ? "s" : ""}
-                </>
-              )}
-            </Popup>
-          </CircleMarker>
-        );
-      })}
-    </MapContainer>
-  );
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !ready.current) return;
+    (
+      map.getSource("vehicles") as maplibregl.GeoJSONSource | undefined
+    )?.setData(vehicleData(vehicles, selectedId));
+    (
+      map.getSource("geofence") as maplibregl.GeoJSONSource | undefined
+    )?.setData(geofenceData(vehicles, selectedId));
+    // Recenter on a newly selected vehicle (not on every position tick).
+    if (selectedId !== pannedTo.current) {
+      pannedTo.current = selectedId;
+      const target = vehicles.find((vehicle) => vehicle.id === selectedId);
+      if (target) {
+        map.easeTo({
+          center: [target.position.lon, target.position.lat],
+          duration: 600,
+        });
+      }
+    }
+  }, [vehicles, selectedId]);
+
+  return <div ref={container} style={{ height: "100%", width: "100%" }} />;
 }

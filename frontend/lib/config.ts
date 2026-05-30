@@ -10,17 +10,14 @@ export const WS_BASE_URL =
 export const MAP_CENTER: [number, number] = [35.45, 133.2];
 export const MAP_ZOOM = 12;
 
-// Map tiles. Defaults to OpenStreetMap (no key). Point NEXT_PUBLIC_TILE_URL at a
-// commercial provider (Mapbox, MapTiler, …) to swap basemaps without code
-// changes; include the API key in the URL template and set a matching
-// NEXT_PUBLIC_TILE_ATTRIBUTION. The bundled-data credits are always appended.
-const OSM_TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-const BUNDLED_CREDITS =
-  "Boundaries: 国土数値情報（国土交通省） | Rail: ekidata.jp";
+// Basemap. By default the app renders a self-contained offline vector style
+// built from the bundled GeoJSON (no key, works air-gapped). Point
+// NEXT_PUBLIC_MAP_STYLE_URL at a vector-tile style — MapTiler, a self-hosted
+// Protomaps/OpenMapTiles style, etc. — for full street detail in production.
+export const MAP_STYLE_URL = process.env.NEXT_PUBLIC_MAP_STYLE_URL ?? null;
 
-export const TILE_URL = process.env.NEXT_PUBLIC_TILE_URL ?? OSM_TILE_URL;
-export const TILE_ATTRIBUTION = `${
-  process.env.NEXT_PUBLIC_TILE_ATTRIBUTION ?? OSM_ATTRIBUTION
-} | ${BUNDLED_CREDITS}`;
+// Always-shown credit for the bundled offline layers (a remote style adds its
+// own provider/OSM attribution on top).
+export const MAP_ATTRIBUTION =
+  process.env.NEXT_PUBLIC_MAP_ATTRIBUTION ??
+  "Boundaries: 国土数値情報（国土交通省） | Rail: ekidata.jp";
