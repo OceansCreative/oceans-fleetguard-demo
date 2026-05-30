@@ -8,4 +8,4 @@ export const WS_BASE_URL =
 
 /** Map default view: centered on the Matsue / Yasugi / Yonago area. */
 export const MAP_CENTER: [number, number] = [35.45, 133.2];
-export const MAP_ZOOM = 11;
+export const MAP_ZOOM = 12;
