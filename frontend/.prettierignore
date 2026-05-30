@@ -5,3 +5,4 @@ next-env.d.ts
 package-lock.json
 public/basemap.geojson
 public/rail.geojson
+public/labels.geojson

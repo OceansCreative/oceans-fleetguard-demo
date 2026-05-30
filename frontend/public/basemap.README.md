@@ -29,3 +29,11 @@ layer so the offline map shows the rail network too. Built from the
 dataset, which is derived from **[ekidata.jp](https://ekidata.jp/)** station/line
 data (lines are drawn by connecting each line's stations in order, then clipped
 to the demo bounding box). Credited in the map attribution.
+
+## `labels.geojson` — place & water names
+
+Point labels for the map: one per municipality (label point = the vertex
+centroid of each city's largest polygon, from the same boundary data above) plus
+a few hand-placed water-body names (Sea of Japan, Lake Shinji, Nakaumi). Drawn
+as text divIcons in the basemap pane, so OSM's own labels take over when tiles
+are available.

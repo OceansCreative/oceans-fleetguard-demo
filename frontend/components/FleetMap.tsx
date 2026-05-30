@@ -10,8 +10,10 @@ import {
   MapContainer,
   Pane,
   Popup,
+  ScaleControl,
   TileLayer,
 } from "react-leaflet";
+import type { Feature, Point } from "geojson";
 
 import { MAP_CENTER, MAP_ZOOM } from "@/lib/config";
 import { formatSpeedKmh, highestSeverity } from "@/lib/format";
@@ -46,6 +48,25 @@ const stationDot = (_feature: unknown, latlng: L.LatLng): L.CircleMarker =>
     fillOpacity: 1,
   });
 
+type LabelProps = { name: string; kind: string };
+const labelMarker = (
+  feature: Feature<Point, LabelProps> | undefined,
+  latlng: L.LatLng,
+): L.Marker => {
+  const { name, kind } = feature?.properties ?? { name: "", kind: "city" };
+  return L.marker(latlng, {
+    pane: "basemap",
+    interactive: false,
+    keyboard: false,
+    icon: L.divIcon({
+      className: `map-label map-label--${kind}`,
+      html: `<span>${name}</span>`,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
+    }),
+  });
+};
+
 export function FleetMap({
   vehicles,
   selectedId,
@@ -61,6 +82,7 @@ export function FleetMap({
   // renders recognizable coastline and water instead of a blank rectangle.
   const [land, setLand] = useState<GeoJsonObject | null>(null);
   const [rail, setRail] = useState<GeoJsonObject | null>(null);
+  const [labels, setLabels] = useState<GeoJsonObject | null>(null);
   useEffect(() => {
     let active = true;
     const load = (path: string, set: (d: GeoJsonObject) => void) =>
@@ -74,6 +96,7 @@ export function FleetMap({
         });
     load("/basemap.geojson", setLand);
     load("/rail.geojson", setRail); // railway lines + stations (ekidata.jp)
+    load("/labels.geojson", setLabels); // place + water names
     return () => {
       active = false;
     };
@@ -99,11 +122,15 @@ export function FleetMap({
             pointToLayer={stationDot}
           />
         )}
+        {labels !== null && (
+          <GeoJSON data={labels} pointToLayer={labelMarker} />
+        )}
       </Pane>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | Boundaries: 国土数値情報（国土交通省） | Rail: ekidata.jp'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+      <ScaleControl position="bottomleft" imperial={false} />
       {selectedGeofence !== null && (
         // The allowed area the geofence rule checks the selected vehicle against.
         <Circle
