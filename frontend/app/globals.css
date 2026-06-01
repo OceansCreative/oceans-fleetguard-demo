@@ -568,3 +568,58 @@ button {
   text-transform: uppercase;
   font-size: 10px;
 }
+/* Dark basemap: light text on a dark halo (higher specificity to override). */
+.map-label.map-label--dark {
+  color: #c4d0de;
+  text-shadow:
+    0 1px 2px #0e1622,
+    0 -1px 2px #0e1622,
+    1px 0 2px #0e1622,
+    -1px 0 2px #0e1622,
+    0 0 4px #0e1622;
+}
+.map-label--dark.map-label--major {
+  color: #eef4fb;
+}
+.map-label--dark.map-label--water {
+  color: #7fb0d6;
+}
+
+/* Basemap style switcher (light / dark / aerial). */
+.map-switch {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.map-switch__btn {
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.map-switch__btn:hover:not(:disabled):not(.is-active) {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.map-switch__btn.is-active {
+  background: #2f6fe0;
+  color: #fff;
+}
+.map-switch__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

@@ -1,12 +1,14 @@
 "use client";
 
 import maplibregl from "maplibre-gl";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
+  MAP_AERIAL_URL,
   MAP_ATTRIBUTION,
   MAP_CENTER,
   MAP_STYLE_URL,
+  MAP_STYLE_URL_DARK,
   MAP_ZOOM,
 } from "@/lib/config";
 import { highestSeverity } from "@/lib/format";
@@ -15,78 +17,130 @@ import { CALM_COLOR, SEVERITY_COLOR } from "@/components/severity";
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
-const SEA = "#a7cde4";
 const EMPTY: GeoJSON.FeatureCollection = {
   type: "FeatureCollection",
   features: [],
 };
 
+type Theme = "light" | "dark";
+type BasemapId = "light" | "dark" | "aerial";
+
+const PALETTE: Record<Theme, Record<string, string>> = {
+  light: {
+    sea: "#a7cde4",
+    land: "#f4f1ea",
+    coastHalo: "#ffffff",
+    coast: "#8aa6bb",
+    railBed: "#c2c5d4",
+    railLine: "#5c627a",
+    stationFill: "#ffffff",
+    stationStroke: "#5c627a",
+  },
+  dark: {
+    sea: "#0e1622",
+    land: "#1c2532",
+    coastHalo: "#2b3a4d",
+    coast: "#46586c",
+    railBed: "#2b3543",
+    railLine: "#6b7d93",
+    stationFill: "#0e1622",
+    stationStroke: "#7d90a6",
+  },
+};
+
 // A self-contained vector style drawn from the bundled GeoJSON, used when no
 // remote style is configured. No glyphs are referenced (place names are HTML
-// markers), so it needs no fonts and works fully offline. Styling leans on
-// cartographic conventions — soft sea, a haloed coastline, railway hatching —
-// so the limited offline data still reads as a deliberately designed map.
-const OFFLINE_STYLE: maplibregl.StyleSpecification = {
-  version: 8,
-  sources: {
-    land: { type: "geojson", data: "/basemap.geojson" },
-    rail: { type: "geojson", data: "/rail.geojson" },
-  },
-  layers: [
-    { id: "bg", type: "background", paint: { "background-color": SEA } },
-    {
-      id: "land",
-      type: "fill",
-      source: "land",
-      paint: { "fill-color": "#f4f1ea" },
+// markers), so it needs no fonts and works fully offline. Cartographic
+// conventions — soft sea, a haloed coastline, railway hatching — make the
+// limited offline data read as a deliberately designed map.
+function offlineStyle(theme: Theme): maplibregl.StyleSpecification {
+  const c = PALETTE[theme];
+  return {
+    version: 8,
+    sources: {
+      land: { type: "geojson", data: "/basemap.geojson" },
+      rail: { type: "geojson", data: "/rail.geojson" },
     },
-    // Coastline: a soft white halo under a crisp blue-grey edge.
-    {
-      id: "coast-halo",
-      type: "line",
-      source: "land",
-      paint: { "line-color": "#ffffff", "line-width": 3.5, "line-blur": 1.5 },
-    },
-    {
-      id: "coast",
-      type: "line",
-      source: "land",
-      paint: { "line-color": "#8aa6bb", "line-width": 1.1 },
-    },
-    // Railway: a pale bed with a dashed line on top (classic hatched look).
-    {
-      id: "rail-bed",
-      type: "line",
-      source: "rail",
-      filter: ["==", ["get", "kind"], "rail"],
-      layout: { "line-cap": "round" },
-      paint: { "line-color": "#c2c5d4", "line-width": 3 },
-    },
-    {
-      id: "rail-line",
-      type: "line",
-      source: "rail",
-      filter: ["==", ["get", "kind"], "rail"],
-      paint: {
-        "line-color": "#5c627a",
-        "line-width": 1.3,
-        "line-dasharray": [2, 2.5],
+    layers: [
+      { id: "bg", type: "background", paint: { "background-color": c.sea } },
+      {
+        id: "land",
+        type: "fill",
+        source: "land",
+        paint: { "fill-color": c.land },
       },
-    },
-    {
-      id: "stations",
-      type: "circle",
-      source: "rail",
-      filter: ["==", ["get", "kind"], "station"],
-      paint: {
-        "circle-radius": 2.2,
-        "circle-color": "#ffffff",
-        "circle-stroke-color": "#5c627a",
-        "circle-stroke-width": 1.1,
+      {
+        id: "coast-halo",
+        type: "line",
+        source: "land",
+        paint: {
+          "line-color": c.coastHalo,
+          "line-width": 3.5,
+          "line-blur": 1.5,
+        },
       },
-    },
-  ],
-};
+      {
+        id: "coast",
+        type: "line",
+        source: "land",
+        paint: { "line-color": c.coast, "line-width": 1.1 },
+      },
+      {
+        id: "rail-bed",
+        type: "line",
+        source: "rail",
+        filter: ["==", ["get", "kind"], "rail"],
+        layout: { "line-cap": "round" },
+        paint: { "line-color": c.railBed, "line-width": 3 },
+      },
+      {
+        id: "rail-line",
+        type: "line",
+        source: "rail",
+        filter: ["==", ["get", "kind"], "rail"],
+        paint: {
+          "line-color": c.railLine,
+          "line-width": 1.3,
+          "line-dasharray": [2, 2.5],
+        },
+      },
+      {
+        id: "stations",
+        type: "circle",
+        source: "rail",
+        filter: ["==", ["get", "kind"], "station"],
+        paint: {
+          "circle-radius": 2.2,
+          "circle-color": c.stationFill,
+          "circle-stroke-color": c.stationStroke,
+          "circle-stroke-width": 1.1,
+        },
+      },
+    ],
+  };
+}
+
+// Resolve a basemap choice to a MapLibre style: a remote URL when configured,
+// otherwise the bundled offline style. Aerial has no offline equivalent.
+function resolveStyle(id: BasemapId): maplibregl.StyleSpecification | string {
+  if (id === "aerial") return MAP_AERIAL_URL ?? offlineStyle("dark");
+  if (id === "dark") return MAP_STYLE_URL_DARK ?? offlineStyle("dark");
+  return MAP_STYLE_URL ?? offlineStyle("light");
+}
+
+// Whether a basemap renders from the bundled offline GeoJSON (so we draw our
+// own labels) and, if so, with which label theme.
+function offlineTheme(id: BasemapId): Theme | null {
+  if (id === "light" && MAP_STYLE_URL === null) return "light";
+  if (id === "dark" && MAP_STYLE_URL_DARK === null) return "dark";
+  return null;
+}
+
+const BASEMAPS: { id: BasemapId; label: string }[] = [
+  { id: "light", label: "明" },
+  { id: "dark", label: "暗" },
+  { id: "aerial", label: "航空写真" },
+];
 
 /** Approximate a metres-radius circle as a polygon (for the geofence). */
 function circleFeature(
@@ -161,18 +215,22 @@ export function FleetMap({
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);
-  // Keep the latest props reachable from the (stable) map callbacks.
+  const [basemap, setBasemap] = useState<BasemapId>("light");
+  // Keep the latest props/selection reachable from the (stable) map callbacks.
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
   const dataRef = useRef({ vehicles, selectedId });
   dataRef.current = { vehicles, selectedId };
+  const basemapRef = useRef<BasemapId>("light");
   const pannedTo = useRef<string | null>(null);
+  // Re-attach overlays after a runtime style change (set up by the init effect).
+  const reattachRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (container.current === null) return;
     const map = new maplibregl.Map({
       container: container.current,
-      style: MAP_STYLE_URL ?? OFFLINE_STYLE,
+      style: resolveStyle("light"),
       center: [MAP_CENTER[1], MAP_CENTER[0]],
       zoom: MAP_ZOOM,
       attributionControl: false,
@@ -191,13 +249,12 @@ export function FleetMap({
       "bottom-right",
     );
 
-    const markers: maplibregl.Marker[] = [];
-    let activated = false;
-    // Whether the *active* style is the bundled offline one (true from the
-    // start when no remote style is configured, or after a fallback).
-    let offlineMode = MAP_STYLE_URL === null;
-
-    const addLabels = () => {
+    let labelMarkers: maplibregl.Marker[] = [];
+    const clearLabels = () => {
+      for (const marker of labelMarkers) marker.remove();
+      labelMarkers = [];
+    };
+    const addLabels = (theme: Theme) => {
       fetch("/labels.geojson")
         .then((response) => response.json())
         .then((collection: GeoJSON.FeatureCollection) => {
@@ -207,11 +264,11 @@ export function FleetMap({
             const kind = String(feature.properties?.kind ?? "city");
             const name = String(feature.properties?.name ?? "");
             const element = document.createElement("div");
-            element.className = `map-label map-label--${kind}${
-              MAJOR.has(name) ? " map-label--major" : ""
-            }`;
+            element.className =
+              `map-label map-label--${kind} map-label--${theme}` +
+              (MAJOR.has(name) ? " map-label--major" : "");
             element.textContent = name;
-            markers.push(
+            labelMarkers.push(
               new maplibregl.Marker({ element })
                 .setLngLat(feature.geometry.coordinates as [number, number])
                 .addTo(map),
@@ -223,72 +280,67 @@ export function FleetMap({
         });
     };
 
-    // Add the live overlays (geofence + vehicles) on top of whichever basemap
-    // finished loading. Idempotent — guarded so a fallback can't double-add.
-    const activate = () => {
-      if (activated) return;
-      activated = true;
+    // (Re)add the live overlay sources/layers on top of whichever basemap just
+    // loaded. Guarded so it is safe to call after every style change.
+    const addOverlays = () => {
+      if (!map.getSource("geofence")) {
+        map.addSource("geofence", { type: "geojson", data: EMPTY });
+      }
+      if (!map.getLayer("geofence-fill")) {
+        map.addLayer({
+          id: "geofence-fill",
+          type: "fill",
+          source: "geofence",
+          paint: { "fill-color": "#2f6fe0", "fill-opacity": 0.06 },
+        });
+      }
+      if (!map.getLayer("geofence-line")) {
+        map.addLayer({
+          id: "geofence-line",
+          type: "line",
+          source: "geofence",
+          paint: {
+            "line-color": "#2f6fe0",
+            "line-width": 1.4,
+            "line-opacity": 0.8,
+            "line-dasharray": [3, 2],
+          },
+        });
+      }
+      if (!map.getSource("vehicles")) {
+        map.addSource("vehicles", { type: "geojson", data: EMPTY });
+      }
+      if (!map.getLayer("vehicle-glow")) {
+        map.addLayer({
+          id: "vehicle-glow",
+          type: "circle",
+          source: "vehicles",
+          filter: ["==", ["get", "selected"], true],
+          paint: {
+            "circle-radius": 20,
+            "circle-color": ["get", "color"],
+            "circle-opacity": 0.18,
+            "circle-blur": 1,
+          },
+        });
+      }
+      if (!map.getLayer("vehicles")) {
+        map.addLayer({
+          id: "vehicles",
+          type: "circle",
+          source: "vehicles",
+          paint: {
+            "circle-radius": ["case", ["get", "selected"], 8, 5.5],
+            "circle-color": ["get", "color"],
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": ["case", ["get", "selected"], 3, 1.5],
+          },
+        });
+      }
+    };
 
-      map.addSource("geofence", { type: "geojson", data: EMPTY });
-      map.addLayer({
-        id: "geofence-fill",
-        type: "fill",
-        source: "geofence",
-        paint: { "fill-color": "#2f6fe0", "fill-opacity": 0.06 },
-      });
-      map.addLayer({
-        id: "geofence-line",
-        type: "line",
-        source: "geofence",
-        paint: {
-          "line-color": "#2f6fe0",
-          "line-width": 1.4,
-          "line-opacity": 0.8,
-          "line-dasharray": [3, 2],
-        },
-      });
-
-      map.addSource("vehicles", { type: "geojson", data: EMPTY });
-      // Soft glow under the selected vehicle.
-      map.addLayer({
-        id: "vehicle-glow",
-        type: "circle",
-        source: "vehicles",
-        filter: ["==", ["get", "selected"], true],
-        paint: {
-          "circle-radius": 20,
-          "circle-color": ["get", "color"],
-          "circle-opacity": 0.18,
-          "circle-blur": 1,
-        },
-      });
-      map.addLayer({
-        id: "vehicles",
-        type: "circle",
-        source: "vehicles",
-        paint: {
-          "circle-radius": ["case", ["get", "selected"], 8, 5.5],
-          "circle-color": ["get", "color"],
-          "circle-stroke-color": "#ffffff",
-          "circle-stroke-width": ["case", ["get", "selected"], 3, 1.5],
-        },
-      });
-
-      map.on("click", "vehicles", (event) => {
-        const feature = event.features?.[0];
-        if (feature) onSelectRef.current(String(feature.properties.id));
-      });
-      map.on("mouseenter", "vehicles", () => {
-        map.getCanvas().style.cursor = "pointer";
-      });
-      map.on("mouseleave", "vehicles", () => {
-        map.getCanvas().style.cursor = "";
-      });
-
-      // Bundled place / water labels only when the offline basemap is active;
-      // a remote vector style brings its own labels.
-      if (offlineMode) addLabels();
-
+    const reattach = () => {
+      addOverlays();
       ready.current = true;
       const { vehicles: v, selectedId: s } = dataRef.current;
       (map.getSource("vehicles") as maplibregl.GeoJSONSource).setData(
@@ -297,32 +349,63 @@ export function FleetMap({
       (map.getSource("geofence") as maplibregl.GeoJSONSource).setData(
         geofenceData(v, s),
       );
+      clearLabels();
+      const theme = offlineTheme(basemapRef.current);
+      if (theme) addLabels(theme);
     };
+    reattachRef.current = reattach;
 
-    map.on("load", activate);
+    map.on("load", reattach);
 
-    // If a remote style is configured but never loads — bad/blocked key,
-    // offline network — drop to the bundled offline basemap rather than show a
-    // blank map. (When the remote style loads normally, `activated` is already
-    // true and this is a no-op.)
+    // Interaction handlers bind by layer id and survive style swaps, so add
+    // them once.
+    map.on("click", "vehicles", (event) => {
+      const feature = event.features?.[0];
+      if (feature) onSelectRef.current(String(feature.properties.id));
+    });
+    map.on("mouseenter", "vehicles", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "vehicles", () => {
+      map.getCanvas().style.cursor = "";
+    });
+
+    // If a remote light style is configured but never loads — bad/blocked key,
+    // offline network — drop to the bundled offline basemap rather than render
+    // blank. (When it loads normally `ready` is already set and this no-ops.)
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
-    if (MAP_STYLE_URL !== null) {
+    if (typeof resolveStyle("light") === "string") {
       fallbackTimer = setTimeout(() => {
-        if (activated) return;
-        offlineMode = true;
-        map.setStyle(OFFLINE_STYLE);
-        map.once("idle", activate);
+        if (ready.current) return;
+        map.setStyle(offlineStyle("light"));
+        map.once("idle", reattach);
       }, 8000);
     }
 
     return () => {
       if (fallbackTimer) clearTimeout(fallbackTimer);
-      for (const marker of markers) marker.remove();
+      clearLabels();
       map.remove();
       mapRef.current = null;
       ready.current = false;
     };
   }, []);
+
+  // Swap the basemap when the toggle changes (the initial light style is set in
+  // the constructor, so skip the first run).
+  const firstRun = useRef(true);
+  useEffect(() => {
+    basemapRef.current = basemap;
+    const map = mapRef.current;
+    if (map === null) return;
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    ready.current = false;
+    map.setStyle(resolveStyle(basemap));
+    map.once("idle", () => reattachRef.current());
+  }, [basemap]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -346,5 +429,31 @@ export function FleetMap({
     }
   }, [vehicles, selectedId]);
 
-  return <div ref={container} style={{ height: "100%", width: "100%" }} />;
+  return (
+    <div style={{ position: "relative", height: "100%", width: "100%" }}>
+      <div ref={container} style={{ height: "100%", width: "100%" }} />
+      <div className="map-switch" role="group" aria-label="Basemap style">
+        {BASEMAPS.map(({ id, label }) => {
+          const disabled = id === "aerial" && MAP_AERIAL_URL === null;
+          return (
+            <button
+              key={id}
+              type="button"
+              className={`map-switch__btn${basemap === id ? " is-active" : ""}`}
+              aria-pressed={basemap === id}
+              disabled={disabled}
+              title={
+                disabled
+                  ? "航空写真はプロバイダ設定が必要 (NEXT_PUBLIC_MAP_AERIAL_URL)"
+                  : undefined
+              }
+              onClick={() => setBasemap(id)}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
