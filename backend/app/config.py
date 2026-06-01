@@ -37,6 +37,9 @@ class Settings:
         traccar_password: Password for ``traccar_username``.
         traccar_transport: How to relay live data — ``"ws"`` streams over the
             WebSocket (default), ``"rest"`` polls the REST API on each tick.
+        api_key: Shared secret required to call ``/api`` and ``/ws/positions``.
+            Empty (the default) disables authentication, keeping the keyless
+            mock/quickstart open; set it for any exposed deployment.
     """
 
     mock_mode: bool
@@ -46,6 +49,7 @@ class Settings:
     traccar_username: str
     traccar_password: str
     traccar_transport: str
+    api_key: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -61,4 +65,5 @@ class Settings:
             traccar_username=os.environ.get("TRACCAR_USERNAME", ""),
             traccar_password=os.environ.get("TRACCAR_PASSWORD", ""),
             traccar_transport=os.environ.get("TRACCAR_TRANSPORT", "ws").strip().lower(),
+            api_key=os.environ.get("API_KEY", "").strip(),
         )

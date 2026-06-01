@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 
 from app.api.fleet_service import FleetService
 from app.api.schemas import AlertOut, VehicleOut
 
 
-def create_router(service: FleetService) -> APIRouter:
-    """Build the ``/api`` router bound to a fleet service instance."""
-    router = APIRouter(prefix="/api", tags=["fleet"])
+def create_router(
+    service: FleetService, *, dependencies: Sequence[Any] | None = None
+) -> APIRouter:
+    """Build the ``/api`` router bound to a fleet service instance.
+
+    ``dependencies`` (e.g. an API-key guard) apply to every route on the router.
+    """
+    router = APIRouter(
+        prefix="/api", tags=["fleet"], dependencies=list(dependencies or [])
+    )
 
     @router.get("/vehicles")
     def list_vehicles() -> list[VehicleOut]:

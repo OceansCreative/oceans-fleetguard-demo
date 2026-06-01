@@ -6,6 +6,12 @@ export const API_BASE_URL =
 export const WS_BASE_URL =
   process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000";
 
+// Optional shared API key, sent on REST (X-API-Key) and WS (?key=) requests
+// when the backend has API_KEY set. NOTE: anything in a NEXT_PUBLIC_* var ships
+// to the browser, so this gates casual access but is not a substitute for real
+// user auth — front a public deployment with a login / backend-for-frontend.
+export const API_KEY = process.env.NEXT_PUBLIC_API_KEY ?? null;
+
 /** Map default view: centered on the Matsue / Yasugi / Yonago area. */
 export const MAP_CENTER: [number, number] = [35.45, 133.2];
 export const MAP_ZOOM = 12;

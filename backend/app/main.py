@@ -5,12 +5,13 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.fleet_service import FleetService
 from app.api.routes import create_router
+from app.api.security import key_is_valid, make_api_key_dependency
 from app.api.stream import FleetStreamer
 from app.config import Settings
 
@@ -69,20 +70,31 @@ def create_app(
         CORSMiddleware,
         allow_origins=list(resolved.cors_origins),
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
     )
 
     @app.get("/health")
     def health() -> dict[str, object]:
-        """Liveness probe; also reports whether mock mode is active."""
+        """Liveness probe; also reports whether mock mode is active.
+
+        Unauthenticated by design, so orchestrators can probe it.
+        """
         return {"status": "ok", "mock_mode": resolved.mock_mode}
 
-    app.include_router(create_router(service))
+    guard = make_api_key_dependency(resolved.api_key)
+    app.include_router(create_router(service, dependencies=[Depends(guard)]))
 
     @app.websocket("/ws/positions")
     async def positions(websocket: WebSocket) -> None:
-        """Stream live vehicle positions and alerts to the dashboard."""
+        """Stream live vehicle positions and alerts to the dashboard.
+
+        Browsers can't set headers on a WebSocket handshake, so the API key is
+        passed as a ``?key=`` query parameter when authentication is enabled.
+        """
+        if not key_is_valid(resolved.api_key, websocket.query_params.get("key")):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
         await streamer.connect(websocket)
         try:
             while True:

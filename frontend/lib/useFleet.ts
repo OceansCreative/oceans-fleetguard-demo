@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 
 import { fetchVehicles } from "@/lib/api";
-import { WS_BASE_URL } from "@/lib/config";
+import { API_KEY, WS_BASE_URL } from "@/lib/config";
 import { connectLive, type SocketStatus } from "@/lib/liveSocket";
 import { parsePositions } from "@/lib/parse";
 import type { Vehicle } from "@/lib/types";
@@ -38,8 +38,11 @@ export function useFleet(): FleetState {
         /* WebSocket will deliver the first snapshot if REST is unavailable. */
       });
 
+    const wsUrl = `${WS_BASE_URL}/ws/positions${
+      API_KEY ? `?key=${encodeURIComponent(API_KEY)}` : ""
+    }`;
     const live = connectLive({
-      url: `${WS_BASE_URL}/ws/positions`,
+      url: wsUrl,
       onStatus: setConnection,
       onMessage: (data) => {
         try {
