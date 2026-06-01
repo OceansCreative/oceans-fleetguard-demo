@@ -105,8 +105,13 @@ for what's planned and in progress.
 
 ### Screenshots
 
-> _Coming soon — screenshots and a short demo GIF will be added once the React
-> dashboard lands._
+The live dashboard — fleet list, real-time map with the selected vehicle's
+geofence, and the anti-theft alert feed. A light / dark / aerial basemap
+switcher is built in.
+
+| Light | Dark |
+| --- | --- |
+| ![FleetGuard dashboard, light basemap](./docs/img/dashboard-light.png) | ![FleetGuard dashboard, dark basemap](./docs/img/dashboard-dark.png) |
 
 ### Contributing
 
@@ -167,6 +172,15 @@ docker compose -f infra/docker-compose.yml up
 ### ステータス
 
 🚧 **初期開発中**。ロードマップは小さくレビュー済みの PR 単位で進めます。
+
+### スクリーンショット
+
+ライブダッシュボード（車両一覧・選択車両のジオフェンス付きリアルタイム地図・
+盗難アラート）。地図は明 / 暗 / 航空写真の切替に対応しています。
+
+| ライト | ダーク |
+| --- | --- |
+| ![FleetGuard ダッシュボード（ライト基図）](./docs/img/dashboard-light.png) | ![FleetGuard ダッシュボード（ダーク基図）](./docs/img/dashboard-dark.png) |
 
 ### コントリビュート
 
