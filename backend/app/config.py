@@ -40,6 +40,8 @@ class Settings:
         api_key: Shared secret required to call ``/api`` and ``/ws/positions``.
             Empty (the default) disables authentication, keeping the keyless
             mock/quickstart open; set it for any exposed deployment.
+        notify_webhook_url: URL to POST when a vehicle enters a CRITICAL alert
+            state. Empty (the default) disables outbound notifications.
     """
 
     mock_mode: bool
@@ -50,6 +52,7 @@ class Settings:
     traccar_password: str
     traccar_transport: str
     api_key: str = ""
+    notify_webhook_url: str = ""
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -66,4 +69,5 @@ class Settings:
             traccar_password=os.environ.get("TRACCAR_PASSWORD", ""),
             traccar_transport=os.environ.get("TRACCAR_TRANSPORT", "ws").strip().lower(),
             api_key=os.environ.get("API_KEY", "").strip(),
+            notify_webhook_url=os.environ.get("NOTIFY_WEBHOOK_URL", "").strip(),
         )

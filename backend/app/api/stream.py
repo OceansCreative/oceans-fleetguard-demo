@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import WebSocket
 
 from app.api.fleet_service import FleetService
+from app.notify.webhook import CriticalAlertNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +26,15 @@ class FleetStreamer:
         service: FleetService,
         interval_s: float = _BROADCAST_INTERVAL_S,
         step_s: float = _STEP_SECONDS,
+        notifier: CriticalAlertNotifier | None = None,
     ) -> None:
         self._service = service
         self._interval_s = interval_s
         self._step_s = step_s
         self._clients: set[WebSocket] = set()
         self._task: asyncio.Task[None] | None = None
+        # Disabled no-op notifier unless one is injected.
+        self._notifier = notifier or CriticalAlertNotifier("")
 
     def _payload(self) -> dict[str, Any]:
         return {
@@ -65,6 +69,7 @@ class FleetStreamer:
                 # every client's feed and ``/health``.
                 await asyncio.to_thread(self._service.advance, self._step_s)
                 await self._broadcast()
+                await self._notifier.process(self._service.vehicles())
             except Exception:  # noqa: BLE001 - one bad tick must not end the stream
                 logger.warning("fleet broadcast tick failed; skipping", exc_info=True)
 
@@ -78,3 +83,4 @@ class FleetStreamer:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        await self._notifier.aclose()

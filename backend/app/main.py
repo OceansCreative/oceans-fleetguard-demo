@@ -14,6 +14,7 @@ from app.api.routes import create_router
 from app.api.security import key_is_valid, make_api_key_dependency
 from app.api.stream import FleetStreamer
 from app.config import Settings
+from app.notify.webhook import CriticalAlertNotifier
 
 
 def _build_service(settings: Settings) -> FleetService:
@@ -52,7 +53,8 @@ def create_app(
     """
     resolved = settings or Settings.from_env()
     service = service or _build_service(resolved)
-    streamer = FleetStreamer(service)
+    notifier = CriticalAlertNotifier(resolved.notify_webhook_url)
+    streamer = FleetStreamer(service, notifier=notifier)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
