@@ -62,6 +62,7 @@ class AlertType(StrEnum):
     IGNITION_OFF_MOVEMENT = "ignition_off_movement"
     ABNORMAL_SPEED = "abnormal_speed"
     ABNORMAL_HEADING = "abnormal_heading"
+    SIGNAL_LOST = "signal_lost"
 
 
 class Severity(StrEnum):
@@ -98,3 +99,6 @@ class DetectionConfig:
     # Course changes above this (degrees) between consecutive samples are
     # treated as abnormal while moving.
     max_heading_change_deg: float = 90.0
+    # Silence longer than this (seconds) without a position update triggers the
+    # signal-lost rule (possible GPS jamming or tracker tampering).
+    max_signal_silence_s: float = 600.0

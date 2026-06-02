@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, time
 
 from app.api.schemas import AlertOut, VehicleOut
@@ -29,17 +30,39 @@ def _utcnow() -> datetime:
 class FleetService:
     """Bridges a fleet source and the detection engine into API payloads."""
 
-    def __init__(self, source: FleetSource) -> None:
+    def __init__(
+        self,
+        source: FleetSource,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
         self._source = source
+        self._clock: Callable[[], datetime] = clock if clock is not None else _utcnow
 
     @classmethod
-    def mock(cls, start_time: datetime | None = None, seed: int = 42) -> FleetService:
-        return cls(MockSource(MockFleet(start_time=start_time or _utcnow(), seed=seed)))
+    def mock(
+        cls,
+        start_time: datetime | None = None,
+        seed: int = 42,
+        clock: Callable[[], datetime] | None = None,
+    ) -> FleetService:
+        effective_start = start_time or _utcnow()
+        return cls(
+            MockSource(MockFleet(start_time=effective_start, seed=seed)),
+            clock=clock if clock is not None else (lambda: effective_start),
+        )
 
     @classmethod
-    def empty(cls, start_time: datetime | None = None) -> FleetService:
-        fleet = MockFleet(start_time=start_time or _utcnow(), vehicles=())
-        return cls(MockSource(fleet))
+    def empty(
+        cls,
+        start_time: datetime | None = None,
+        clock: Callable[[], datetime] | None = None,
+    ) -> FleetService:
+        effective_start = start_time or _utcnow()
+        fleet = MockFleet(start_time=effective_start, vehicles=())
+        return cls(
+            MockSource(fleet),
+            clock=clock if clock is not None else (lambda: effective_start),
+        )
 
     @classmethod
     def traccar(cls, base_url: str, username: str, password: str) -> FleetService:
@@ -66,11 +89,15 @@ class FleetService:
 
     def vehicles(self) -> list[VehicleOut]:
         """Current vehicles, each with freshly evaluated alerts."""
+        now = self._clock()
         return [
             VehicleOut.from_sample(
                 sample,
                 detect(
-                    sample.current, self._config_for(sample.vehicle), sample.previous
+                    sample.current,
+                    self._config_for(sample.vehicle),
+                    sample.previous,
+                    now=now,
                 ),
             )
             for sample in self._source.snapshot()
