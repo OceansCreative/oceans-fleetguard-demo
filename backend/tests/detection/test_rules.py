@@ -19,6 +19,7 @@ from app.detection.rules import (
     check_geofence_breach,
     check_ignition_off_movement,
     check_off_hours_movement,
+    check_signal_lost,
     is_within_business_hours,
 )
 
@@ -196,3 +197,44 @@ def test_abnormal_heading_at_threshold_is_silent() -> None:
         )
         is None
     )
+
+
+# --- signal lost (stale position) -----------------------------------------
+
+
+def test_signal_lost_fires_after_threshold() -> None:
+    last_seen = datetime(2026, 5, 27, 10, 0)
+    pos = _position(recorded_at=last_seen)
+    # 601 s of silence — just over the 600 s threshold.
+    now = datetime(2026, 5, 27, 10, 10, 1)
+    alert = check_signal_lost(pos, now, max_silence_s=600.0)
+    assert alert is not None
+    assert alert.type is AlertType.SIGNAL_LOST
+    assert alert.severity is Severity.CRITICAL
+    assert "601" in alert.reason
+    assert "jamming" in alert.reason or "tampering" in alert.reason
+
+
+def test_signal_lost_does_not_fire_at_threshold() -> None:
+    last_seen = datetime(2026, 5, 27, 10, 0)
+    pos = _position(recorded_at=last_seen)
+    # Exactly 600 s — boundary should NOT fire.
+    now = datetime(2026, 5, 27, 10, 10, 0)
+    assert check_signal_lost(pos, now, max_silence_s=600.0) is None
+
+
+def test_signal_lost_does_not_fire_under_threshold() -> None:
+    last_seen = datetime(2026, 5, 27, 10, 0)
+    pos = _position(recorded_at=last_seen)
+    # 300 s — well within the 600 s window.
+    now = datetime(2026, 5, 27, 10, 5, 0)
+    assert check_signal_lost(pos, now, max_silence_s=600.0) is None
+
+
+def test_signal_lost_reason_contains_silence_duration() -> None:
+    last_seen = datetime(2026, 5, 27, 12, 0)
+    pos = _position(recorded_at=last_seen)
+    now = datetime(2026, 5, 27, 12, 20, 0)  # 1200 s silence
+    alert = check_signal_lost(pos, now, max_silence_s=600.0)
+    assert alert is not None
+    assert "1200" in alert.reason
