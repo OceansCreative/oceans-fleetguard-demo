@@ -1,0 +1,76 @@
+# Pre-commit hooks mirroring the FleetGuard CI gate.
+# Install: pip install pre-commit && pre-commit install
+# Run all: pre-commit run --all-files  (or: make precommit)
+
+default_install_hook_types: [pre-commit]
+
+repos:
+  # ---------------------------------------------------------------------------
+  # Stock hygiene hooks
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict
+
+  # ---------------------------------------------------------------------------
+  # Backend — Python (files under backend/)
+  # ---------------------------------------------------------------------------
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # ruff>=0.8 required by pyproject; 0.8.x is the latest 0.8 series release.
+    rev: v0.8.7
+    hooks:
+      - id: ruff
+        name: ruff (backend)
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        # ruff-format is ruff's built-in formatter (Black-compatible).
+        # We use it alongside black so that ruff --fix auto-corrects imports/style
+        # and black enforces the canonical format — same as CI "ruff check" + "black".
+        name: ruff-format (backend)
+        files: ^backend/
+
+  - repo: https://github.com/psf/black
+    # black>=24.10 required by pyproject.
+    rev: 24.10.0
+    hooks:
+      - id: black
+        name: black (backend)
+        files: ^backend/
+        language_version: python3
+
+  # mypy requires project dependencies to be installed, so we use a local hook
+  # that delegates to uv (which honours pyproject.toml [project.optional-dependencies]).
+  - repo: local
+    hooks:
+      - id: mypy-backend
+        name: mypy (backend)
+        language: system
+        # uv run picks up the venv/pyproject automatically when CWD is backend/.
+        entry: bash -c 'cd backend && uv run --extra dev mypy .'
+        types: [python]
+        files: ^backend/
+        pass_filenames: false
+
+  # ---------------------------------------------------------------------------
+  # Frontend — JS/TS (files under frontend/)
+  # ---------------------------------------------------------------------------
+  - repo: local
+    hooks:
+      - id: prettier-frontend
+        name: prettier --check (frontend)
+        language: system
+        entry: bash -c 'cd frontend && npm run format:check'
+        files: ^frontend/
+        pass_filenames: false
+
+      - id: eslint-frontend
+        name: eslint (frontend)
+        language: system
+        entry: bash -c 'cd frontend && npm run lint'
+        files: ^frontend/
+        pass_filenames: false
