@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import Callable
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.api.fleet_service import FleetService
@@ -15,6 +17,8 @@ from app.api.security import key_is_valid, make_api_key_dependency
 from app.api.stream import FleetStreamer
 from app.config import Settings
 from app.notify.webhook import CriticalAlertNotifier
+from app.observability import ReadinessState, configure_logging
+from app.observability.middleware import RequestIDMiddleware
 
 
 def _build_service(settings: Settings) -> FleetService:
@@ -39,8 +43,57 @@ def _build_service(settings: Settings) -> FleetService:
     )
 
 
+def _make_lifespan(
+    service: FleetService,
+    streamer: FleetStreamer,
+    readiness: ReadinessState,
+) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
+    """Return an async-context-manager callable that manages the app's lifespan."""
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        await service.start()
+        readiness.mark_ready()
+        streamer.start()
+        try:
+            yield
+        finally:
+            await streamer.stop()
+            await service.aclose()
+
+    return lifespan
+
+
+def _add_ws_route(
+    app: FastAPI,
+    streamer: FleetStreamer,
+    api_key: str,
+) -> None:
+    """Register the WebSocket positions route."""
+
+    @app.websocket("/ws/positions")
+    async def positions(websocket: WebSocket) -> None:
+        """Stream live vehicle positions and alerts to the dashboard.
+
+        Browsers can't set headers on a WebSocket handshake, so the API key is
+        passed as a ``?key=`` query parameter when authentication is enabled.
+        """
+        if not key_is_valid(api_key, websocket.query_params.get("key")):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+        await streamer.connect(websocket)
+        try:
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            streamer.disconnect(websocket)
+
+
 def create_app(
-    settings: Settings | None = None, *, service: FleetService | None = None
+    settings: Settings | None = None,
+    *,
+    service: FleetService | None = None,
+    readiness: ReadinessState | None = None,
 ) -> FastAPI:
     """Create and configure the FleetGuard FastAPI application.
 
@@ -50,30 +103,30 @@ def create_app(
         service: Optional pre-built fleet service. Injecting one lets tests
             exercise the live-relay wiring with a fake upstream instead of a
             real Traccar server.
+        readiness: Optional pre-built readiness state. Injecting one lets tests
+            assert 503/200 behaviour without running the full lifespan.
     """
     resolved = settings or Settings.from_env()
-    service = service or _build_service(resolved)
+    configure_logging(resolved.log_level, json=resolved.log_format == "json")
+
+    svc = service or _build_service(resolved)
     notifier = CriticalAlertNotifier(resolved.notify_webhook_url)
-    streamer = FleetStreamer(service, notifier=notifier)
+    streamer = FleetStreamer(svc, notifier=notifier)
+    _readiness = readiness or ReadinessState()
 
-    @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        await service.start()
-        streamer.start()
-        try:
-            yield
-        finally:
-            await streamer.stop()
-            await service.aclose()
+    app = FastAPI(
+        title="FleetGuard API",
+        version=__version__,
+        lifespan=_make_lifespan(svc, streamer, _readiness),
+    )
 
-    app = FastAPI(title="FleetGuard API", version=__version__, lifespan=lifespan)
-
+    app.add_middleware(RequestIDMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(resolved.cors_origins),
         allow_credentials=True,
         allow_methods=["GET"],
-        allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
     )
 
     @app.get("/health")
@@ -84,25 +137,21 @@ def create_app(
         """
         return {"status": "ok", "mock_mode": resolved.mock_mode}
 
-    guard = make_api_key_dependency(resolved.api_key)
-    app.include_router(create_router(service, dependencies=[Depends(guard)]))
+    @app.get("/ready")
+    def ready() -> JSONResponse:
+        """Readiness probe — returns 200 once the service has started.
 
-    @app.websocket("/ws/positions")
-    async def positions(websocket: WebSocket) -> None:
-        """Stream live vehicle positions and alerts to the dashboard.
-
-        Browsers can't set headers on a WebSocket handshake, so the API key is
-        passed as a ``?key=`` query parameter when authentication is enabled.
+        Returns 503 while the fleet service is still initialising so that
+        orchestrators (Kubernetes, Compose health-checks) can wait before
+        routing live traffic.  Unauthenticated by design, same as ``/health``.
         """
-        if not key_is_valid(resolved.api_key, websocket.query_params.get("key")):
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
-        await streamer.connect(websocket)
-        try:
-            while True:
-                await websocket.receive_text()
-        except WebSocketDisconnect:
-            streamer.disconnect(websocket)
+        if _readiness.is_ready():
+            return JSONResponse({"status": "ready"})
+        return JSONResponse({"status": "starting"}, status_code=503)
+
+    guard = make_api_key_dependency(resolved.api_key)
+    app.include_router(create_router(svc, dependencies=[Depends(guard)]))
+    _add_ws_route(app, streamer, resolved.api_key)
 
     return app
 

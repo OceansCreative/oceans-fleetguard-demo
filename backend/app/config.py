@@ -42,6 +42,10 @@ class Settings:
             mock/quickstart open; set it for any exposed deployment.
         notify_webhook_url: URL to POST when a vehicle enters a CRITICAL alert
             state. Empty (the default) disables outbound notifications.
+        log_level: Logging level name (case-insensitive), e.g. ``INFO`` or
+            ``DEBUG``. Defaults to ``INFO``.
+        log_format: ``text`` (default, human-readable) or ``json`` (structured
+            JSON lines for log-aggregation pipelines).
     """
 
     mock_mode: bool
@@ -53,6 +57,8 @@ class Settings:
     traccar_transport: str
     api_key: str = ""
     notify_webhook_url: str = ""
+    log_level: str = "INFO"
+    log_format: str = "text"
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -70,4 +76,6 @@ class Settings:
             traccar_transport=os.environ.get("TRACCAR_TRANSPORT", "ws").strip().lower(),
             api_key=os.environ.get("API_KEY", "").strip(),
             notify_webhook_url=os.environ.get("NOTIFY_WEBHOOK_URL", "").strip(),
+            log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
+            log_format=os.environ.get("LOG_FORMAT", "text").strip().lower(),
         )
