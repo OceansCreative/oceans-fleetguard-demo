@@ -1,10 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
+import { isAuthed, logout } from "@/lib/auth";
 import { useFleet } from "@/lib/useFleet";
 import { AlertsBanner } from "@/components/AlertsBanner";
+import { LoginForm } from "@/components/LoginForm";
 import { VehicleDetail } from "@/components/VehicleDetail";
 import { VehicleList } from "@/components/VehicleList";
 
@@ -24,10 +26,27 @@ const CONNECTION_LABEL = {
 } as const;
 
 export function Dashboard(): React.JSX.Element {
-  const { vehicles, connection } = useFleet();
+  // When the login gate is enabled and our session is missing/expired, a REST
+  // 401 flips this on and we show the login form instead of the dashboard.
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const onUnauthorized = useCallback(() => setNeedsLogin(true), []);
+  const { vehicles, connection } = useFleet({ onUnauthorized });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected =
     vehicles.find((vehicle) => vehicle.id === selectedId) ?? null;
+  // Only offer "Sign out" when a session token is actually in use; the keyless
+  // quickstart (login disabled) shows nothing extra.
+  const showLogout = isAuthed();
+
+  if (needsLogin) {
+    // Remount the dashboard on success so useFleet re-seeds with the token.
+    return <LoginForm onAuthed={() => window.location.reload()} />;
+  }
+
+  function handleLogout(): void {
+    logout();
+    setNeedsLogin(true);
+  }
 
   return (
     <div className="shell">
@@ -41,10 +60,17 @@ export function Dashboard(): React.JSX.Element {
             <span className="brand-sub">Fleet Operations</span>
           </span>
         </div>
-        <span className={`conn conn--${connection}`}>
-          <span className="conn-dot" />
-          {CONNECTION_LABEL[connection]}
-        </span>
+        <div className="header-right">
+          <span className={`conn conn--${connection}`}>
+            <span className="conn-dot" />
+            {CONNECTION_LABEL[connection]}
+          </span>
+          {showLogout && (
+            <button type="button" className="logout-btn" onClick={handleLogout}>
+              Sign out
+            </button>
+          )}
+        </div>
       </header>
 
       <AlertsBanner vehicles={vehicles} />

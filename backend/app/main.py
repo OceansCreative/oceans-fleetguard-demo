@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.auth import make_auth_dependency, token_is_valid
 from app.api.fleet_service import FleetService
-from app.api.routes import create_router
+from app.api.routes import create_auth_router, create_router
 from app.api.security import key_is_valid, make_api_key_dependency
 from app.api.stream import FleetStreamer
 from app.config import Settings
@@ -37,6 +39,21 @@ def _build_service(settings: Settings) -> FleetService:
         username=settings.traccar_username,
         password=settings.traccar_password,
     )
+
+
+def _ws_is_authorized(
+    settings: Settings, now_fn: Callable[[], int], websocket: WebSocket
+) -> bool:
+    """Both opt-in gates must pass for the WS handshake.
+
+    Browsers can't set headers on a WebSocket, so the API key arrives as
+    ``?key=`` and the session token as ``?token=``. Each check is a no-op when
+    its secret is unset, mirroring the REST dependencies.
+    """
+    params = websocket.query_params
+    key_ok = key_is_valid(settings.api_key, params.get("key"))
+    token_ok = token_is_valid(settings.auth_secret, now_fn(), params.get("token"))
+    return key_ok and token_ok
 
 
 def create_app(
@@ -84,17 +101,25 @@ def create_app(
         """
         return {"status": "ok", "mock_mode": resolved.mock_mode}
 
-    guard = make_api_key_dependency(resolved.api_key)
-    app.include_router(create_router(service, dependencies=[Depends(guard)]))
+    def now_fn() -> int:
+        return int(time.time())
+
+    key_guard = make_api_key_dependency(resolved.api_key)
+    auth_guard = make_auth_dependency(resolved.auth_secret, now_fn)
+    app.include_router(create_auth_router(resolved, now_fn=now_fn))
+    app.include_router(
+        create_router(service, dependencies=[Depends(key_guard), Depends(auth_guard)])
+    )
 
     @app.websocket("/ws/positions")
     async def positions(websocket: WebSocket) -> None:
         """Stream live vehicle positions and alerts to the dashboard.
 
-        Browsers can't set headers on a WebSocket handshake, so the API key is
-        passed as a ``?key=`` query parameter when authentication is enabled.
+        Browsers can't set headers on a WebSocket handshake, so the API key
+        (``?key=``) and the session token (``?token=``) are passed as query
+        parameters. Both opt-in gates must pass when enabled.
         """
-        if not key_is_valid(resolved.api_key, websocket.query_params.get("key")):
+        if not _ws_is_authorized(resolved, now_fn, websocket):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
             return
         await streamer.connect(websocket)

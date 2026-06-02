@@ -18,6 +18,16 @@ def _get_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in _TRUE_VALUES
 
 
+def _get_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
 def _get_origins(name: str, default: str) -> tuple[str, ...]:
     raw = os.environ.get(name, default)
     return tuple(origin.strip() for origin in raw.split(",") if origin.strip())
@@ -42,6 +52,15 @@ class Settings:
             mock/quickstart open; set it for any exposed deployment.
         notify_webhook_url: URL to POST when a vehicle enters a CRITICAL alert
             state. Empty (the default) disables outbound notifications.
+        auth_secret: HMAC signing secret for user-login session tokens. Empty
+            (the default) disables the login gate entirely — a SECOND, opt-in
+            gate independent of ``api_key``. Set it to require a signed session
+            token (issued by ``POST /api/auth/login``) on ``/api`` and the WS.
+        auth_username: The single login username accepted by the login route.
+        auth_password_hash: Lowercase sha256 hex digest of the login password.
+            See ``app.api.auth.verify_password`` for the (deliberately simple)
+            scheme and its production caveats.
+        auth_token_ttl_s: Session-token lifetime in seconds (default 1 hour).
     """
 
     mock_mode: bool
@@ -53,6 +72,10 @@ class Settings:
     traccar_transport: str
     api_key: str = ""
     notify_webhook_url: str = ""
+    auth_secret: str = ""
+    auth_username: str = ""
+    auth_password_hash: str = ""
+    auth_token_ttl_s: int = 3600
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -70,4 +93,8 @@ class Settings:
             traccar_transport=os.environ.get("TRACCAR_TRANSPORT", "ws").strip().lower(),
             api_key=os.environ.get("API_KEY", "").strip(),
             notify_webhook_url=os.environ.get("NOTIFY_WEBHOOK_URL", "").strip(),
+            auth_secret=os.environ.get("AUTH_SECRET", "").strip(),
+            auth_username=os.environ.get("AUTH_USERNAME", "").strip(),
+            auth_password_hash=os.environ.get("AUTH_PASSWORD_HASH", "").strip().lower(),
+            auth_token_ttl_s=_get_int("AUTH_TOKEN_TTL_S", default=3600),
         )
