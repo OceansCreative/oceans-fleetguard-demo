@@ -4,11 +4,12 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import { useFleet } from "@/lib/useFleet";
+import { useLang, useT } from "@/lib/i18n";
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { VehicleDetail } from "@/components/VehicleDetail";
 import { VehicleList } from "@/components/VehicleList";
 
-// Leaflet touches `window`, so the map must be client-only (no SSR).
+// MapLibre touches `window`, so the map must be client-only (no SSR).
 const FleetMap = dynamic(
   () => import("@/components/FleetMap").then((m) => m.FleetMap),
   {
@@ -17,17 +18,13 @@ const FleetMap = dynamic(
   },
 );
 
-const CONNECTION_LABEL = {
-  connecting: "connecting",
-  live: "live",
-  reconnecting: "reconnecting",
-} as const;
-
 export function Dashboard(): React.JSX.Element {
   const { vehicles, connection } = useFleet();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected =
     vehicles.find((vehicle) => vehicle.id === selectedId) ?? null;
+  const t = useT();
+  const { lang, setLang } = useLang();
 
   return (
     <div className="shell">
@@ -37,14 +34,22 @@ export function Dashboard(): React.JSX.Element {
             🛰
           </span>
           <span className="brand-text">
-            <span className="brand-name">FleetGuard</span>
-            <span className="brand-sub">Fleet Operations</span>
+            <span className="brand-name">{t("app.title")}</span>
+            <span className="brand-sub">{t("app.sub")}</span>
           </span>
         </div>
         <span className={`conn conn--${connection}`}>
           <span className="conn-dot" />
-          {CONNECTION_LABEL[connection]}
+          {t(`status.${connection}` as Parameters<typeof t>[0])}
         </span>
+        <button
+          type="button"
+          className="lang-toggle"
+          onClick={() => setLang(lang === "en" ? "ja" : "en")}
+          aria-label="Switch language"
+        >
+          {t("lang.toggle")}
+        </button>
       </header>
 
       <AlertsBanner vehicles={vehicles} />
@@ -52,8 +57,10 @@ export function Dashboard(): React.JSX.Element {
       <div className="body">
         <aside className="col-list scroll">
           <div className="col-head">
-            <span className="col-title">Fleet</span>
-            <span className="col-count">{vehicles.length} vehicles</span>
+            <span className="col-title">{t("fleet.title")}</span>
+            <span className="col-count">
+              {vehicles.length} {t("fleet.vehicles")}
+            </span>
           </div>
           <VehicleList
             vehicles={vehicles}

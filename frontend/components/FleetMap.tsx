@@ -14,6 +14,8 @@ import {
 import { highestSeverity } from "@/lib/format";
 import type { Vehicle } from "@/lib/types";
 import { CALM_COLOR, SEVERITY_COLOR } from "@/components/severity";
+import { useT } from "@/lib/i18n";
+import type { MessageKey } from "@/lib/i18n";
 
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -136,10 +138,10 @@ function offlineTheme(id: BasemapId): Theme | null {
   return null;
 }
 
-const BASEMAPS: { id: BasemapId; label: string }[] = [
-  { id: "light", label: "明" },
-  { id: "dark", label: "暗" },
-  { id: "aerial", label: "航空写真" },
+const BASEMAP_CONFIGS: { id: BasemapId; labelKey: MessageKey }[] = [
+  { id: "light", labelKey: "map.light" },
+  { id: "dark", labelKey: "map.dark" },
+  { id: "aerial", labelKey: "map.aerial" },
 ];
 
 /** Approximate a metres-radius circle as a polygon (for the geofence). */
@@ -212,6 +214,7 @@ export function FleetMap({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
+  const t = useT();
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const ready = useRef(false);
@@ -432,8 +435,12 @@ export function FleetMap({
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
       <div ref={container} style={{ height: "100%", width: "100%" }} />
-      <div className="map-switch" role="group" aria-label="Basemap style">
-        {BASEMAPS.map(({ id, label }) => {
+      <div
+        className="map-switch"
+        role="group"
+        aria-label={t("map.switchLabel")}
+      >
+        {BASEMAP_CONFIGS.map(({ id, labelKey }) => {
           const disabled = id === "aerial" && MAP_AERIAL_URL === null;
           return (
             <button
@@ -442,14 +449,10 @@ export function FleetMap({
               className={`map-switch__btn${basemap === id ? " is-active" : ""}`}
               aria-pressed={basemap === id}
               disabled={disabled}
-              title={
-                disabled
-                  ? "航空写真はプロバイダ設定が必要 (NEXT_PUBLIC_MAP_AERIAL_URL)"
-                  : undefined
-              }
+              title={disabled ? t("map.aerialDisabled") : undefined}
               onClick={() => setBasemap(id)}
             >
-              {label}
+              {t(labelKey)}
             </button>
           );
         })}

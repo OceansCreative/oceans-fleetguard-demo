@@ -2,6 +2,7 @@ import { formatDistanceKm, formatSpeedKmh } from "@/lib/format";
 import type { Vehicle } from "@/lib/types";
 import { AlertBadge } from "@/components/AlertBadge";
 import { SEVERITY_COLOR } from "@/components/severity";
+import { useT } from "@/lib/i18n";
 
 function Row({
   label,
@@ -23,13 +24,14 @@ export function VehicleDetail({
 }: {
   vehicle: Vehicle | null;
 }): React.JSX.Element {
+  const t = useT();
   if (vehicle === null) {
     return (
       <div className="detail-empty">
         <span className="detail-empty-mark" aria-hidden>
           🛰
         </span>
-        <span>Select a vehicle to see its details.</span>
+        <span>{t("fleet.noVehicleSelected")}</span>
       </div>
     );
   }
@@ -48,29 +50,38 @@ export function VehicleDetail({
       </div>
 
       <div className="detail-rows">
-        <Row label="Plate" value={vehicle.plate} />
-        <Row label="Speed" value={formatSpeedKmh(position.speed_mps)} />
-        <Row label="Heading" value={`${Math.round(position.course_deg)}°`} />
-        <Row label="Ignition" value={idle ? "off" : "on"} />
+        <Row label={t("detail.plate")} value={vehicle.plate} />
         <Row
-          label="Position"
+          label={t("detail.speed")}
+          value={formatSpeedKmh(position.speed_mps)}
+        />
+        <Row
+          label={t("detail.heading")}
+          value={`${Math.round(position.course_deg)}°`}
+        />
+        <Row
+          label={t("detail.ignition")}
+          value={idle ? t("detail.ignitionOff") : t("detail.ignitionOn")}
+        />
+        <Row
+          label={t("detail.position")}
           value={`${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}`}
         />
         <Row
-          label="Last update"
+          label={t("detail.lastUpdate")}
           value={new Date(position.recorded_at).toLocaleTimeString()}
         />
         {vehicle.geofence !== null && (
           <Row
-            label="Geofence"
-            value={`${formatDistanceKm(vehicle.geofence.radius_m)} radius`}
+            label={t("detail.geofence")}
+            value={`${formatDistanceKm(vehicle.geofence.radius_m)} ${t("detail.geofenceRadius")}`}
           />
         )}
       </div>
 
-      <span className="section-label">Alerts</span>
+      <span className="section-label">{t("detail.alerts")}</span>
       {vehicle.alerts.length === 0 ? (
-        <p className="detail-ok">✓ No active alerts</p>
+        <p className="detail-ok">✓ {t("detail.noAlerts")}</p>
       ) : (
         <ul className="alert-list">
           {vehicle.alerts.map((alert) => (
