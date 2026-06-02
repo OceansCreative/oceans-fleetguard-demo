@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 from collections.abc import Callable, Sequence
 from typing import Any
 
@@ -53,11 +54,14 @@ def create_auth_router(settings: Settings, *, now_fn: Callable[[], int]) -> APIR
 
     @router.post("/login")
     def login(body: LoginRequest) -> LoginResponse:
-        valid = (
-            bool(settings.auth_secret)
-            and body.username == settings.auth_username
-            and verify_password(settings.auth_password_hash, body.password)
+        # Evaluate both factors unconditionally (no short-circuit) and compare
+        # the username in constant time, so response latency can't reveal
+        # whether a guessed username is valid (user-enumeration side channel).
+        user_ok = hmac.compare_digest(
+            body.username.encode("utf-8"), settings.auth_username.encode("utf-8")
         )
+        pw_ok = verify_password(settings.auth_password_hash, body.password)
+        valid = bool(settings.auth_secret) and user_ok and pw_ok
         if not valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
