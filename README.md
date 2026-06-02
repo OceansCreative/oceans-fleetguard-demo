@@ -113,6 +113,12 @@ switcher is built in.
 | --- | --- |
 | ![FleetGuard dashboard, light basemap](./docs/img/dashboard-light.png) | ![FleetGuard dashboard, dark basemap](./docs/img/dashboard-dark.png) |
 
+### Deployment
+
+See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) for the production deployment &
+hardening guide: environment setup, authentication, CORS, TLS termination,
+notifications, basemap providers, and a hardening checklist.
+
 ### Contributing
 
 Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for
@@ -181,6 +187,12 @@ docker compose -f infra/docker-compose.yml up
 | ライト | ダーク |
 | --- | --- |
 | ![FleetGuard ダッシュボード（ライト基図）](./docs/img/dashboard-light.png) | ![FleetGuard ダッシュボード（ダーク基図）](./docs/img/dashboard-dark.png) |
+
+### デプロイ
+
+本番環境へのデプロイと堅牢化の手順（環境変数の設定・認証・CORS・TLS 終端・
+通知・基図プロバイダ・セキュリティチェックリスト）は
+[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) を参照してください。
 
 ### コントリビュート
 
