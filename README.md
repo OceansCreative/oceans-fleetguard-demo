@@ -9,7 +9,7 @@ theft detection — built with Next.js, FastAPI, and a fully testable pure-funct
 detection core.
 
 [![CI](https://github.com/OceansCreative/oceans-fleetguard-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/OceansCreative/oceans-fleetguard-demo/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-pending-lightgrey)](https://github.com/OceansCreative/oceans-fleetguard-demo/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/backend%20coverage-~97%25-brightgreen)](https://github.com/OceansCreative/oceans-fleetguard-demo/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -40,14 +40,27 @@ instance.
 
 ### Features
 
-- 🗺️ **Live map** — vehicle positions stream in over WebSocket.
-- 🚗 **Vehicle list & detail panel** — status, speed, ignition, last update.
+- 🗺️ **Live vector map** — MapLibre GL with a self-contained **offline** style
+  (no API key) and a **light / dark / aerial** basemap switcher; vehicle
+  positions stream in over WebSocket with auto-reconnect.
+- 🚗 **Vehicle list & detail panel** — status, speed, ignition, last update, and
+  the selected vehicle's geofence drawn on the map.
 - 🚨 **Anti-theft detection** — implemented as pure functions for easy testing:
   - Geofence breach
   - Movement outside business / off-hours
   - Movement while ignition is OFF
   - Abnormal speed / heading
-- 🔔 **Alert UI** — surfaced in the dashboard the moment a rule trips.
+  - GPS signal lost / stale position (possible jamming or tampering)
+- 🔔 **Alerts** — surfaced in the dashboard the moment a rule trips, with an
+  `/api/alerts/history` log and an opt-in **webhook** on CRITICAL alerts
+  (Slack / Discord / any receiver).
+- 🔐 **Auth & hardening** (all opt-in, off by default) — shared **API key** on
+  `/api` + `/ws`, a **user login** gate (signed session tokens), per-IP **rate
+  limiting**, and tightened CORS.
+- 🌐 **Bilingual UI** — EN / 日本語 toggle (i18n), browser-detected and
+  persisted.
+- 📈 **Observability** — structured (JSON) logging with request IDs, a `/ready`
+  readiness probe, plus CI, Dependabot, and CodeQL.
 - 🧪 **Mock mode** — simulated vehicles around Matsue / Yasugi / Yonago, toggled
   by an environment variable.
 
@@ -75,7 +88,7 @@ flowchart LR
 
 | Layer        | Stack                                                        |
 | ------------ | ------------------------------------------------------------ |
-| `frontend/`  | Next.js 15 (App Router), TypeScript (strict), Leaflet/MapLibre |
+| `frontend/`  | Next.js 15 (App Router), TypeScript (strict), MapLibre GL (vector) |
 | `backend/`   | FastAPI (Python 3.12), pure-function theft detection         |
 | `infra/`     | docker-compose: Traccar + PostgreSQL + backend + frontend    |
 
@@ -101,7 +114,8 @@ moving around the Matsue area — no Traccar account required.
 
 🚧 **Early development.** The roadmap is delivered in small, reviewed pull
 requests. See the [issues](https://github.com/OceansCreative/oceans-fleetguard-demo/issues)
-for what's planned and in progress.
+for what's planned and in progress, and [CHANGELOG.md](./CHANGELOG.md) for what
+has landed.
 
 ### Screenshots
 
@@ -147,14 +161,25 @@ WebSocket API を整形して扱いやすい形に正規化し、その上に盗
 
 ### 機能
 
-- 🗺️ **ライブ地図** — WebSocket で車両位置をストリーミング更新
-- 🚗 **車両一覧・詳細パネル** — 状態 / 速度 / イグニッション / 最終更新
+- 🗺️ **ライブ・ベクター地図** — MapLibre GL。キー不要の**オフライン**スタイルを
+  同梱し、**明 / 暗 / 航空写真**の基図切替に対応。車両位置は WebSocket で
+  ストリーミング更新（自動再接続）
+- 🚗 **車両一覧・詳細パネル** — 状態 / 速度 / イグニッション / 最終更新、選択車両の
+  ジオフェンスを地図に描画
 - 🚨 **盗難検知** — テスト容易な pure function として実装：
   - ジオフェンス逸脱
   - 営業 / 在宅時間外の移動
   - イグニッション OFF 中の移動
   - 速度・進路の異常
-- 🔔 **アラート UI** — 判定が成立した瞬間にダッシュボードへ表示
+  - GPS ロスト / 測位停止（ジャミング・タンパリング疑い）
+- 🔔 **アラート** — 判定成立の瞬間に表示。`/api/alerts/history` で履歴取得、
+  CRITICAL 時の **Webhook**（Slack / Discord など）にオプトインで対応
+- 🔐 **認証・堅牢化**（すべて opt-in・既定 OFF） — `/api`・`/ws` の共有 **API
+  キー**、**ユーザーログイン**（署名付きセッション）、IP 単位の**レート制限**、
+  CORS 厳格化
+- 🌐 **多言語 UI** — EN / 日本語 トグル（i18n）。ブラウザ判定＋永続化
+- 📈 **可観測性** — request-id 付き構造化（JSON）ログ、`/ready` レディネス、
+  CI・Dependabot・CodeQL
 - 🧪 **mock モード** — 松江・安来・米子周辺で動く擬似車両を環境変数で切替
 
 ### アーキテクチャ
@@ -163,7 +188,7 @@ WebSocket API を整形して扱いやすい形に正規化し、その上に盗
 
 | レイヤ       | 技術スタック                                                   |
 | ------------ | -------------------------------------------------------------- |
-| `frontend/`  | Next.js 15 (App Router) / TypeScript(strict) / Leaflet・MapLibre |
+| `frontend/`  | Next.js 15 (App Router) / TypeScript(strict) / MapLibre GL（ベクター） |
 | `backend/`   | FastAPI (Python 3.12) / pure function による盗難検知           |
 | `infra/`     | docker-compose: Traccar + PostgreSQL + backend + frontend      |
 
@@ -178,6 +203,7 @@ docker compose -f infra/docker-compose.yml up
 ### ステータス
 
 🚧 **初期開発中**。ロードマップは小さくレビュー済みの PR 単位で進めます。
+これまでに入った変更は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
 ### スクリーンショット
 
