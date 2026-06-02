@@ -23,6 +23,16 @@ def _get_origins(name: str, default: str) -> tuple[str, ...]:
     return tuple(origin.strip() for origin in raw.split(",") if origin.strip())
 
 
+def _get_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
 @dataclass(frozen=True, slots=True)
 class Settings:
     """Application settings.
@@ -42,6 +52,9 @@ class Settings:
             mock/quickstart open; set it for any exposed deployment.
         notify_webhook_url: URL to POST when a vehicle enters a CRITICAL alert
             state. Empty (the default) disables outbound notifications.
+        rate_limit_per_minute: Maximum requests per client IP per minute for
+            ``/api`` and ``/ws`` endpoints. ``0`` disables rate limiting
+            entirely (default); set a positive value for exposed deployments.
     """
 
     mock_mode: bool
@@ -53,6 +66,7 @@ class Settings:
     traccar_transport: str
     api_key: str = ""
     notify_webhook_url: str = ""
+    rate_limit_per_minute: int = 0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -70,4 +84,5 @@ class Settings:
             traccar_transport=os.environ.get("TRACCAR_TRANSPORT", "ws").strip().lower(),
             api_key=os.environ.get("API_KEY", "").strip(),
             notify_webhook_url=os.environ.get("NOTIFY_WEBHOOK_URL", "").strip(),
+            rate_limit_per_minute=_get_int("RATE_LIMIT_PER_MINUTE", default=0),
         )
