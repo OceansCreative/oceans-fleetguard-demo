@@ -1,6 +1,7 @@
 import { highestSeverity, sortByUrgency, formatSpeedKmh } from "@/lib/format";
 import type { Vehicle } from "@/lib/types";
 import { CALM_COLOR, SEVERITY_COLOR } from "@/components/severity";
+import { useT } from "@/lib/i18n";
 
 export function VehicleList({
   vehicles,
@@ -11,6 +12,7 @@ export function VehicleList({
   selectedId: string | null;
   onSelect: (id: string) => void;
 }): React.JSX.Element {
+  const t = useT();
   const ordered = sortByUrgency(vehicles);
   return (
     <ul className="vlist">
@@ -36,14 +38,14 @@ export function VehicleList({
                 <span className="vrow-meta">
                   {formatSpeedKmh(vehicle.position.speed_mps)}
                   {!vehicle.position.ignition_on && (
-                    <span className="chip-off">ign off</span>
+                    <span className="chip-off">{t("list.ignOff")}</span>
                   )}
                 </span>
               </span>
               {vehicle.alerts.length > 0 && (
                 <span
                   className="vrow-alerts"
-                  aria-label={`${vehicle.alerts.length} alerts`}
+                  aria-label={`${vehicle.alerts.length} ${t("list.alerts")}`}
                 >
                   ⚠ {vehicle.alerts.length}
                 </span>
