@@ -83,3 +83,16 @@ class VehicleOut(BaseModel):
             ),
             alerts=[AlertOut.from_alert(alert) for alert in alerts],
         )
+
+
+class AlertHistoryEntryOut(BaseModel):
+    """A single alert-activation event stored in the history log."""
+
+    vehicle_id: str
+    vehicle_name: str
+    alert_type: str
+    alert_severity: str
+    alert_reason: str
+    lat: float
+    lon: float
+    recorded_at: datetime

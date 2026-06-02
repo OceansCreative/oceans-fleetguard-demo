@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.alerts.history import AlertHistory
 from app.api.fleet_service import FleetService
 from app.api.ratelimit import RateLimiter, RateLimitMiddleware, check_rate_limit
 from app.api.routes import create_router
@@ -112,7 +113,8 @@ def create_app(
     resolved = settings or Settings.from_env()
     service = service or _build_service(resolved)
     notifier = CriticalAlertNotifier(resolved.notify_webhook_url)
-    streamer = FleetStreamer(service, notifier=notifier)
+    alert_history = AlertHistory()
+    streamer = FleetStreamer(service, notifier=notifier, history=alert_history)
     limiter = _build_limiter(resolved.rate_limit_per_minute)
 
     @asynccontextmanager
@@ -137,7 +139,9 @@ def create_app(
         return {"status": "ok", "mock_mode": resolved.mock_mode}
 
     guard = make_api_key_dependency(resolved.api_key)
-    app.include_router(create_router(service, dependencies=[Depends(guard)]))
+    app.include_router(
+        create_router(service, dependencies=[Depends(guard)], history=alert_history)
+    )
 
     @app.websocket("/ws/positions")
     async def positions(websocket: WebSocket) -> None:
