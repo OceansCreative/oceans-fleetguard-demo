@@ -18,19 +18,19 @@ def _get_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in _TRUE_VALUES
 
 
-def _get_origins(name: str, default: str) -> tuple[str, ...]:
-    raw = os.environ.get(name, default)
-    return tuple(origin.strip() for origin in raw.split(",") if origin.strip())
-
-
 def _get_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
-    if raw is None:
+    if raw is None or not raw.strip():
         return default
     try:
         return int(raw.strip())
     except ValueError:
         return default
+
+
+def _get_origins(name: str, default: str) -> tuple[str, ...]:
+    raw = os.environ.get(name, default)
+    return tuple(origin.strip() for origin in raw.split(",") if origin.strip())
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +59,15 @@ class Settings:
             ``DEBUG``. Defaults to ``INFO``.
         log_format: ``text`` (default, human-readable) or ``json`` (structured
             JSON lines for log-aggregation pipelines).
+        auth_secret: HMAC signing secret for user-login session tokens. Empty
+            (the default) disables the login gate entirely — a SECOND, opt-in
+            gate independent of ``api_key``. Set it to require a signed session
+            token (issued by ``POST /api/auth/login``) on ``/api`` and the WS.
+        auth_username: The single login username accepted by the login route.
+        auth_password_hash: Lowercase sha256 hex digest of the login password.
+            See ``app.api.auth.verify_password`` for the (deliberately simple)
+            scheme and its production caveats.
+        auth_token_ttl_s: Session-token lifetime in seconds (default 1 hour).
     """
 
     mock_mode: bool
@@ -73,6 +82,10 @@ class Settings:
     rate_limit_per_minute: int = 0
     log_level: str = "INFO"
     log_format: str = "text"
+    auth_secret: str = ""
+    auth_username: str = ""
+    auth_password_hash: str = ""
+    auth_token_ttl_s: int = 3600
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -93,4 +106,8 @@ class Settings:
             rate_limit_per_minute=_get_int("RATE_LIMIT_PER_MINUTE", default=0),
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
             log_format=os.environ.get("LOG_FORMAT", "text").strip().lower(),
+            auth_secret=os.environ.get("AUTH_SECRET", "").strip(),
+            auth_username=os.environ.get("AUTH_USERNAME", "").strip(),
+            auth_password_hash=os.environ.get("AUTH_PASSWORD_HASH", "").strip().lower(),
+            auth_token_ttl_s=_get_int("AUTH_TOKEN_TTL_S", default=3600),
         )

@@ -51,7 +51,15 @@ export type MessageKey =
   | "map.switchLabel"
   | "list.ignOff"
   | "list.alerts"
-  | "lang.toggle";
+  | "lang.toggle"
+  | "auth.signOut"
+  | "auth.signIn"
+  | "auth.signingIn"
+  | "auth.signInToContinue"
+  | "auth.username"
+  | "auth.password"
+  | "auth.invalidCredentials"
+  | "auth.serverUnreachable";
 
 // ---------------------------------------------------------------------------
 // Message dictionary
@@ -96,6 +104,14 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "list.ignOff": "ign off",
     "list.alerts": "alerts",
     "lang.toggle": "日本語",
+    "auth.signOut": "Sign out",
+    "auth.signIn": "Sign in",
+    "auth.signingIn": "Signing in…",
+    "auth.signInToContinue": "Sign in to continue",
+    "auth.username": "Username",
+    "auth.password": "Password",
+    "auth.invalidCredentials": "Incorrect username or password.",
+    "auth.serverUnreachable": "Could not reach the server. Please try again.",
   },
   ja: {
     "app.title": "FleetGuard",
@@ -135,6 +151,14 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "list.ignOff": "エンジン停止",
     "list.alerts": "件のアラート",
     "lang.toggle": "EN",
+    "auth.signOut": "サインアウト",
+    "auth.signIn": "サインイン",
+    "auth.signingIn": "サインイン中…",
+    "auth.signInToContinue": "続行するにはサインイン",
+    "auth.username": "ユーザー名",
+    "auth.password": "パスワード",
+    "auth.invalidCredentials": "ユーザー名またはパスワードが正しくありません。",
+    "auth.serverUnreachable": "サーバーに接続できませんでした。もう一度お試しください。",
   },
 };
 

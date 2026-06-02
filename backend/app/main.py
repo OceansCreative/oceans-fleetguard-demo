@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
@@ -11,9 +12,10 @@ from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.alerts.history import AlertHistory
+from app.api.auth import make_auth_dependency, token_is_valid
 from app.api.fleet_service import FleetService
 from app.api.ratelimit import RateLimiter, RateLimitMiddleware, check_rate_limit
-from app.api.routes import create_router
+from app.api.routes import create_auth_router, create_router
 from app.api.security import key_is_valid, make_api_key_dependency
 from app.api.stream import FleetStreamer
 from app.config import Settings
@@ -58,17 +60,35 @@ def _add_middleware(
         app.add_middleware(RateLimitMiddleware, limiter=limiter)
 
 
+def _ws_is_authorized(
+    settings: Settings, now_fn: Callable[[], int], websocket: WebSocket
+) -> bool:
+    """Both opt-in gates must pass for the WS handshake.
+
+    Browsers can't set headers on a WebSocket, so the API key arrives as
+    ``?key=`` and the session token as ``?token=``. Each check is a no-op when
+    its secret is unset, mirroring the REST dependencies.
+    """
+    params = websocket.query_params
+    key_ok = key_is_valid(settings.api_key, params.get("key"))
+    token_ok = token_is_valid(settings.auth_secret, now_fn(), params.get("token"))
+    return key_ok and token_ok
+
+
 async def _check_ws_access(
     websocket: WebSocket,
-    api_key: str,
+    settings: Settings,
+    now_fn: Callable[[], int],
     limiter: RateLimiter | None,
 ) -> bool:
-    """Validate API key and rate limit for a WebSocket connection.
+    """Validate auth (API key + session token) and rate limit for a WS connection.
 
     Returns ``True`` when the connection is permitted; returns ``False`` after
-    sending the appropriate close frame so the caller can bail out early.
+    sending the appropriate close frame so the caller can bail out early. Checks
+    run in order: API key, session token (both close 1008), then rate limit
+    (closes 1013), all before the streamer accepts the socket.
     """
-    if not key_is_valid(api_key, websocket.query_params.get("key")):
+    if not _ws_is_authorized(settings, now_fn, websocket):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return False
     if limiter is not None:
@@ -126,7 +146,8 @@ def _make_lifespan(
 def _add_ws_route(
     app: FastAPI,
     streamer: FleetStreamer,
-    api_key: str,
+    settings: Settings,
+    now_fn: Callable[[], int],
     limiter: RateLimiter | None,
 ) -> None:
     """Register the WebSocket positions route."""
@@ -135,10 +156,11 @@ def _add_ws_route(
     async def positions(websocket: WebSocket) -> None:
         """Stream live vehicle positions and alerts to the dashboard.
 
-        Browsers can't set headers on a WebSocket handshake, so the API key is
-        passed as a ``?key=`` query parameter when authentication is enabled.
+        Browsers can't set headers on a WebSocket handshake, so the API key
+        (``?key=``) and the session token (``?token=``) are passed as query
+        parameters. Both opt-in gates and the rate limit must pass when enabled.
         """
-        if not await _check_ws_access(websocket, api_key, limiter):
+        if not await _check_ws_access(websocket, settings, now_fn, limiter):
             return
         await streamer.connect(websocket)
         try:
@@ -172,6 +194,26 @@ def _add_probes(app: FastAPI, resolved: Settings, readiness: ReadinessState) -> 
         return JSONResponse({"status": "starting"}, status_code=503)
 
 
+def _register_routes(
+    app: FastAPI,
+    resolved: Settings,
+    svc: FleetService,
+    alert_history: AlertHistory,
+    now_fn: Callable[[], int],
+) -> None:
+    """Wire the auth-login router and the gated REST router (both auth gates)."""
+    key_guard = make_api_key_dependency(resolved.api_key)
+    auth_guard = make_auth_dependency(resolved.auth_secret, now_fn)
+    app.include_router(create_auth_router(resolved, now_fn=now_fn))
+    app.include_router(
+        create_router(
+            svc,
+            dependencies=[Depends(key_guard), Depends(auth_guard)],
+            history=alert_history,
+        )
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -199,6 +241,9 @@ def create_app(
     limiter = _build_limiter(resolved.rate_limit_per_minute)
     _readiness = readiness or ReadinessState()
 
+    def now_fn() -> int:
+        return int(time.time())
+
     app = FastAPI(
         title="FleetGuard API",
         version=__version__,
@@ -206,12 +251,8 @@ def create_app(
     )
     _add_middleware(app, resolved, limiter)
     _add_probes(app, resolved, _readiness)
-
-    guard = make_api_key_dependency(resolved.api_key)
-    app.include_router(
-        create_router(svc, dependencies=[Depends(guard)], history=alert_history)
-    )
-    _add_ws_route(app, streamer, resolved.api_key, limiter)
+    _register_routes(app, resolved, svc, alert_history, now_fn)
+    _add_ws_route(app, streamer, resolved, now_fn, limiter)
 
     return app
 

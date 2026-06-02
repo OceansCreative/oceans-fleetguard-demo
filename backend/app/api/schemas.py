@@ -10,6 +10,20 @@ from app.detection.models import Alert, CircularGeofence, Position
 from app.sources.base import VehicleSample
 
 
+class LoginRequest(BaseModel):
+    """Credentials posted to ``POST /api/auth/login``."""
+
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    """A freshly issued session token and its absolute expiry (Unix seconds)."""
+
+    token: str
+    expires_at: int
+
+
 class PositionOut(BaseModel):
     """A normalized position for API responses."""
 
