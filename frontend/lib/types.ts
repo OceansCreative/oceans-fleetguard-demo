@@ -44,3 +44,15 @@ export interface Vehicle {
 export interface PositionsMessage {
   vehicles: Vehicle[];
 }
+
+/** A single alert-activation event from GET /api/alerts/history. */
+export interface AlertHistoryEntry {
+  vehicle_id: string;
+  vehicle_name: string;
+  alert_type: string;
+  alert_severity: AlertSeverity;
+  alert_reason: string;
+  lat: number;
+  lon: number;
+  recorded_at: string;
+}

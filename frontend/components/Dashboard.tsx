@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { isAuthed, logout } from "@/lib/auth";
 import { useFleet } from "@/lib/useFleet";
 import { useLang, useT } from "@/lib/i18n";
+import { AlertHistoryPanel } from "@/components/AlertHistoryPanel";
 import { AlertsBanner } from "@/components/AlertsBanner";
 import { LoginForm } from "@/components/LoginForm";
 import { VehicleDetail } from "@/components/VehicleDetail";
@@ -105,6 +106,8 @@ export function Dashboard(): React.JSX.Element {
 
         <aside className="col-detail scroll">
           <VehicleDetail vehicle={selected} />
+          <div className="col-detail-divider" />
+          <AlertHistoryPanel />
         </aside>
       </div>
     </div>

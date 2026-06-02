@@ -2,7 +2,7 @@
 
 import { getToken } from "@/lib/auth";
 import { API_BASE_URL, API_KEY } from "@/lib/config";
-import type { Vehicle } from "@/lib/types";
+import type { AlertHistoryEntry, Vehicle } from "@/lib/types";
 
 /** Raised when a request is rejected by an auth gate (HTTP 401). */
 export class UnauthorizedError extends Error {
@@ -50,4 +50,15 @@ export function fetchVehicle(
   signal?: AbortSignal,
 ): Promise<Vehicle> {
   return getJson<Vehicle>(`/api/vehicles/${id}`, signal);
+}
+
+export function fetchAlertHistory(
+  limit?: number,
+  signal?: AbortSignal,
+): Promise<AlertHistoryEntry[]> {
+  const path =
+    limit !== undefined
+      ? `/api/alerts/history?limit=${limit}`
+      : "/api/alerts/history";
+  return getJson<AlertHistoryEntry[]>(path, signal);
 }

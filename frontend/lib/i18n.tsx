@@ -59,7 +59,10 @@ export type MessageKey =
   | "auth.username"
   | "auth.password"
   | "auth.invalidCredentials"
-  | "auth.serverUnreachable";
+  | "auth.serverUnreachable"
+  | "history.title"
+  | "history.empty"
+  | "history.ago";
 
 // ---------------------------------------------------------------------------
 // Message dictionary
@@ -112,6 +115,9 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "auth.password": "Password",
     "auth.invalidCredentials": "Incorrect username or password.",
     "auth.serverUnreachable": "Could not reach the server. Please try again.",
+    "history.title": "Alert History",
+    "history.empty": "No alerts recorded yet.",
+    "history.ago": "ago",
   },
   ja: {
     "app.title": "FleetGuard",
@@ -160,6 +166,9 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "auth.invalidCredentials": "ユーザー名またはパスワードが正しくありません。",
     "auth.serverUnreachable":
       "サーバーに接続できませんでした。もう一度お試しください。",
+    "history.title": "アラート履歴",
+    "history.empty": "アラートの記録はまだありません。",
+    "history.ago": "前",
   },
 };
 
