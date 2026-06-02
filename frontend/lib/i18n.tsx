@@ -158,7 +158,8 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "auth.username": "ユーザー名",
     "auth.password": "パスワード",
     "auth.invalidCredentials": "ユーザー名またはパスワードが正しくありません。",
-    "auth.serverUnreachable": "サーバーに接続できませんでした。もう一度お試しください。",
+    "auth.serverUnreachable":
+      "サーバーに接続できませんでした。もう一度お試しください。",
   },
 };
 
