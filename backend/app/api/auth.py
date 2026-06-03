@@ -10,26 +10,49 @@ configured username/password and issues a signed token carrying ``sub`` and an
 ``exp`` expiry; the dependency validates the signature and expiry on each
 request.
 
+PASSWORD STORAGE:
+    ``AUTH_PASSWORD_HASH`` accepts two formats, auto-detected on verify:
+    * **scrypt (recommended)** -- a self-describing
+      ``scrypt$<n>$<r>$<p>$<salt>$<dk>`` digest from a slow, *salted* KDF
+      (:func:`hashlib.scrypt`, standard library -- no extra dependency).
+      Generate one with :func:`hash_password`, e.g.::
+
+          python -c "from app.api.auth import hash_password; \
+print(hash_password('s3cret'))"
+
+    * **legacy sha256 hex** -- a bare 64-char digest. sha256 is fast and
+      *unsalted*, so it is NOT appropriate for production credentials; it is
+      kept only for backward compatibility. Prefer the scrypt format.
+
 SECURITY CAVEATS:
-    * Passwords are checked against a *plain sha256 hex* digest. sha256 is fast
-      and unsalted, so it is unsuitable for production credential storage — use
-      a slow, salted KDF (bcrypt/argon2/scrypt). That is intentionally out of
-      scope here to avoid adding a dependency for this MVP.
     * The signing secret must be high-entropy and kept off the client.
 """
 
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
+import secrets
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import Header, HTTPException, status
 
 _ALG = "HS256"
+
+# scrypt cost parameters for new digests. n is the CPU/memory cost (a power of
+# two); memory use is ~128 * n * r bytes (~16 MiB here), suitable for
+# interactive logins. The parameters are stored in each digest so existing
+# hashes keep verifying even if these defaults change later.
+_SCRYPT_PREFIX = "scrypt$"
+_SCRYPT_N = 2**14
+_SCRYPT_R = 8
+_SCRYPT_P = 1
+_SCRYPT_DKLEN = 32
+_SCRYPT_MAXMEM = 64 * 1024 * 1024
 
 
 def _b64url_encode(raw: bytes) -> str:
@@ -97,15 +120,65 @@ def verify_token(secret: str, token: str, now: int) -> dict[str, Any] | None:
     return claims
 
 
-def verify_password(stored_hash: str, password: str) -> bool:
-    """Constant-time check of ``password`` against a sha256 hex digest.
+def hash_password(password: str, *, salt: bytes | None = None) -> str:
+    """Return a self-describing, salted scrypt digest of ``password``.
 
-    NOTE: sha256 is a *fast, unsalted* hash and is NOT appropriate for storing
-    credentials in production — prefer a slow, salted KDF such as bcrypt or
-    argon2. It is used here only to keep this MVP dependency-free.
+    Format: ``scrypt$<n>$<r>$<p>$<salt_b64url>$<dk_b64url>``. A fresh 16-byte
+    random salt is used unless one is injected (for deterministic tests). This
+    is the recommended value for ``AUTH_PASSWORD_HASH``.
+    """
+    if salt is None:
+        salt = secrets.token_bytes(16)
+    dk = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=_SCRYPT_N,
+        r=_SCRYPT_R,
+        p=_SCRYPT_P,
+        dklen=_SCRYPT_DKLEN,
+        maxmem=_SCRYPT_MAXMEM,
+    )
+    return (
+        f"{_SCRYPT_PREFIX}{_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}"
+        f"${_b64url_encode(salt)}${_b64url_encode(dk)}"
+    )
+
+
+def _verify_scrypt(stored_hash: str, password: str) -> bool:
+    """Constant-time check of ``password`` against a ``scrypt$...`` digest."""
+    try:
+        _, n_str, r_str, p_str, salt_seg, dk_seg = stored_hash.split("$")
+        n, r, p = int(n_str), int(r_str), int(p_str)
+        salt = _b64url_decode(salt_seg)
+        expected = _b64url_decode(dk_seg)
+    except (ValueError, binascii.Error):
+        return False
+    try:
+        computed = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=salt,
+            n=n,
+            r=r,
+            p=p,
+            dklen=len(expected),
+            maxmem=_SCRYPT_MAXMEM,
+        )
+    except (ValueError, MemoryError):
+        return False
+    return hmac.compare_digest(computed, expected)
+
+
+def verify_password(stored_hash: str, password: str) -> bool:
+    """Constant-time check of ``password`` against a stored digest.
+
+    Supports two ``stored_hash`` formats (see the module docstring): a salted
+    ``scrypt$...`` digest (recommended) and a legacy bare sha256 hex digest
+    (fast and *unsalted* -- backward compatibility only).
     """
     if not stored_hash:
         return False
+    if stored_hash.startswith(_SCRYPT_PREFIX):
+        return _verify_scrypt(stored_hash, password)
     computed = hashlib.sha256(password.encode("utf-8")).hexdigest()
     return hmac.compare_digest(computed, stored_hash.lower())
 
