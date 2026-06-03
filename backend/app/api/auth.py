@@ -36,7 +36,7 @@ import hashlib
 import hmac
 import json
 import secrets
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from fastapi import Cookie, Header, HTTPException, status
@@ -186,6 +186,25 @@ def verify_password(stored_hash: str, password: str) -> bool:
         return _verify_scrypt(stored_hash, password)
     computed = hashlib.sha256(password.encode("utf-8")).hexdigest()
     return hmac.compare_digest(computed, stored_hash.lower())
+
+
+# A throwaway scrypt digest verified when a username is unknown, so the login
+# path does the same slow hashing whether or not the account exists -- denying
+# an attacker a timing oracle for username enumeration.
+_DUMMY_HASH = hash_password("")
+
+
+def authenticate(users: Mapping[str, str], username: str, password: str) -> bool:
+    """True when ``username`` exists in ``users`` and ``password`` matches.
+
+    Verifies a hash unconditionally -- the stored one when the user exists, a
+    dummy otherwise -- so response latency does not reveal whether a username
+    is valid. The comparisons inside :func:`verify_password` are constant time.
+    """
+    stored = users.get(username)
+    target = _DUMMY_HASH if stored is None else stored
+    matched = verify_password(target, password)
+    return matched and stored is not None
 
 
 def _bearer_token(authorization: str | None) -> str | None:

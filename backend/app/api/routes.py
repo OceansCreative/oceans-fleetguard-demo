@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import hmac
 from collections.abc import Callable, Sequence
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.alerts.history import AlertHistory
-from app.api.auth import SESSION_COOKIE_NAME, issue_token, verify_password
+from app.api.auth import SESSION_COOKIE_NAME, authenticate, issue_token
 from app.api.fleet_service import FleetService
 from app.api.schemas import (
     AlertHistoryEntryOut,
@@ -94,14 +93,12 @@ def create_auth_router(settings: Settings, *, now_fn: Callable[[], int]) -> APIR
 
     @router.post("/login")
     def login(body: LoginRequest, response: Response) -> LoginResponse:
-        # Evaluate both factors unconditionally (no short-circuit) and compare
-        # the username in constant time, so response latency can't reveal
-        # whether a guessed username is valid (user-enumeration side channel).
-        user_ok = hmac.compare_digest(
-            body.username.encode("utf-8"), settings.auth_username.encode("utf-8")
+        # ``authenticate`` hashes unconditionally (even for an unknown user), so
+        # response latency can't reveal whether a guessed username is valid
+        # (user-enumeration side channel). The gate is off when no secret is set.
+        valid = bool(settings.auth_secret) and authenticate(
+            settings.credential_store(), body.username, body.password
         )
-        pw_ok = verify_password(settings.auth_password_hash, body.password)
-        valid = bool(settings.auth_secret) and user_ok and pw_ok
         if not valid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
