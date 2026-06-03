@@ -13,6 +13,16 @@ describe("auth token storage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    // Default benign fetch; individual tests override it as needed. logout()
+    // fires a best-effort backend call, so a stub keeps tests offline.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({}),
+      }),
+    );
   });
   afterEach(() => {
     localStorage.clear();
@@ -37,9 +47,11 @@ describe("auth token storage", () => {
     expect(localStorage.getItem(TOKEN_KEY)).toBe("jwt.abc.def");
     expect(getToken()).toBe("jwt.abc.def");
     expect(isAuthed()).toBe(true);
-    // It POSTed JSON credentials to the login endpoint.
+    // It POSTed JSON credentials to the login endpoint, including cookies so
+    // the backend's httpOnly session cookie is accepted.
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
     expect(JSON.parse(init.body as string)).toEqual({
       username: "admin",
       password: "hunter2",
@@ -64,13 +76,21 @@ describe("auth token storage", () => {
     await expect(login("admin", "x")).rejects.toThrow();
   });
 
-  it("logout clears the stored token", () => {
+  it("logout clears the stored token and asks the backend to drop the cookie", () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
     localStorage.setItem(TOKEN_KEY, "jwt");
     localStorage.setItem(EXPIRES_KEY, String(farFuture()));
     expect(isAuthed()).toBe(true);
+
     logout();
+
     expect(getToken()).toBeNull();
     expect(isAuthed()).toBe(false);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/api/auth/logout");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
   });
 
   it("treats an expired token as absent and clears it", () => {

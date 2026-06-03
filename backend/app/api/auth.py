@@ -39,9 +39,14 @@ import secrets
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from fastapi import Header, HTTPException, status
+from fastapi import Cookie, Header, HTTPException, status
 
 _ALG = "HS256"
+
+# Name of the httpOnly cookie the login route sets with the session token, as
+# an XSS-resistant alternative to a client-readable store. The dependency and
+# the WS guard accept it in addition to a ``Authorization: Bearer`` header.
+SESSION_COOKIE_NAME = "fleetguard_session"
 
 # scrypt cost parameters for new digests. n is the CPU/memory cost (a power of
 # two); memory use is ~128 * n * r bytes (~16 MiB here), suitable for
@@ -209,12 +214,17 @@ def make_auth_dependency(
 
     When ``secret`` is empty the dependency is a no-op, leaving routes open.
     ``now_fn`` supplies the current Unix time, injected so tests need no sleeps.
+    The token is read from an ``Authorization: Bearer`` header or, failing that,
+    the httpOnly session cookie set by the login route.
     """
 
-    async def dependency(authorization: str | None = Header(default=None)) -> None:
+    async def dependency(
+        authorization: str | None = Header(default=None),
+        session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+    ) -> None:
         if not secret:
             return
-        token = _bearer_token(authorization)
+        token = _bearer_token(authorization) or session
         if not token_is_valid(secret, now_fn(), token):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

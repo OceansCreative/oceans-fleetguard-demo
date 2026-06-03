@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.alerts.history import AlertHistory
-from app.api.auth import make_auth_dependency, token_is_valid
+from app.api.auth import SESSION_COOKIE_NAME, make_auth_dependency, token_is_valid
 from app.api.fleet_service import FleetService
 from app.api.ratelimit import RateLimiter, RateLimitMiddleware, check_rate_limit
 from app.api.routes import create_auth_router, create_router
@@ -66,12 +66,15 @@ def _ws_is_authorized(
     """Both opt-in gates must pass for the WS handshake.
 
     Browsers can't set headers on a WebSocket, so the API key arrives as
-    ``?key=`` and the session token as ``?token=``. Each check is a no-op when
-    its secret is unset, mirroring the REST dependencies.
+    ``?key=`` and the session token as ``?token=``. The session token is also
+    accepted from the httpOnly cookie the browser sends automatically on a
+    same-origin handshake. Each check is a no-op when its secret is unset,
+    mirroring the REST dependencies.
     """
     params = websocket.query_params
     key_ok = key_is_valid(settings.api_key, params.get("key"))
-    token_ok = token_is_valid(settings.auth_secret, now_fn(), params.get("token"))
+    token = params.get("token") or websocket.cookies.get(SESSION_COOKIE_NAME)
+    token_ok = token_is_valid(settings.auth_secret, now_fn(), token)
     return key_ok and token_ok
 
 

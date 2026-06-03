@@ -6,10 +6,13 @@
  * signed session token obtained via `POST /api/auth/login`. When it is unset,
  * login is unused and the keyless quickstart is unaffected.
  *
- * SECURITY NOTE: the token is kept in `localStorage` so it survives reloads.
- * That is convenient but readable by any script on the page, so it is exposed
- * to XSS. For a hardened deployment, prefer an httpOnly cookie set by a
- * backend-for-frontend. This MVP keeps it self-contained and dependency-free.
+ * SECURITY NOTE: login runs in dual mode. The backend also sets the token as
+ * an httpOnly cookie (XSS-resistant), which the browser sends automatically on
+ * a same-origin deployment behind a reverse proxy. The token is *additionally*
+ * kept in `localStorage` as a Bearer fallback for the cross-origin development
+ * setup (frontend and backend on different ports); `localStorage` is readable
+ * by page scripts, so a same-origin deployment relying on the cookie is the
+ * hardened path. `logout` clears both.
  */
 
 import { API_BASE_URL } from "@/lib/config";
@@ -56,14 +59,25 @@ export function isAuthed(): boolean {
   return getToken() !== null;
 }
 
-/** Clear any stored session token. */
+/** Clear the stored session token and ask the backend to drop the cookie. */
 export function logout(): void {
   const store = storage();
-  if (store === null) {
-    return;
+  if (store !== null) {
+    store.removeItem(TOKEN_KEY);
+    store.removeItem(EXPIRES_KEY);
   }
-  store.removeItem(TOKEN_KEY);
-  store.removeItem(EXPIRES_KEY);
+  // Best-effort: clear the httpOnly cookie server-side. Fire-and-forget so the
+  // synchronous expiry path (in getToken) never blocks or throws.
+  try {
+    if (typeof fetch === "function") {
+      void fetch(`${API_BASE_URL}/api/auth/logout`, {
+        method: "POST",
+        credentials: "include",
+      }).catch(() => {});
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -80,6 +94,8 @@ export async function login(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username, password }),
+    // Accept the httpOnly session cookie the backend sets alongside the token.
+    credentials: "include",
   });
   if (response.status === 401) {
     return false;

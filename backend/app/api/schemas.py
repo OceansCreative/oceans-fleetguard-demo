@@ -24,6 +24,12 @@ class LoginResponse(BaseModel):
     expires_at: int
 
 
+class LogoutResponse(BaseModel):
+    """Acknowledges that the session cookie was cleared."""
+
+    ok: bool
+
+
 class PositionOut(BaseModel):
     """A normalized position for API responses."""
 

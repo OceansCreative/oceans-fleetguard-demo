@@ -38,6 +38,9 @@ def _settings(*, auth: bool = False, api_key: str = "", ttl_s: int = 3600) -> Se
         auth_username="admin" if auth else "",
         auth_password_hash=_PW_HASH if auth else "",
         auth_token_ttl_s=ttl_s,
+        # The TestClient speaks plain HTTP, so a Secure cookie would not be
+        # echoed back; disable it here to exercise the cookie round-trip.
+        auth_cookie_secure=False,
     )
 
 
@@ -244,9 +247,11 @@ def test_ws_rejects_a_missing_token_when_auth_is_enabled() -> None:
 # --- dependency unit (no app) ---------------------------------------------
 
 
-async def _run_dep(secret: str, authorization: str | None) -> None:
+async def _run_dep(
+    secret: str, authorization: str | None, session: str | None = None
+) -> None:
     dep = make_auth_dependency(secret, lambda: 0)
-    await dep(authorization=authorization)
+    await dep(authorization=authorization, session=session)
 
 
 def test_make_auth_dependency_is_noop_when_disabled() -> None:
@@ -266,3 +271,54 @@ def test_make_auth_dependency_rejects_non_bearer_scheme() -> None:
 
     with pytest.raises(HTTPException):
         asyncio.run(_run_dep(_SECRET, "Basic abc"))
+
+
+def test_make_auth_dependency_accepts_a_valid_cookie() -> None:
+    token = issue_token(_SECRET, "admin", 0, 3600)
+    assert asyncio.run(_run_dep(_SECRET, None, session=token)) is None
+
+
+def test_make_auth_dependency_rejects_a_bad_cookie() -> None:
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException):
+        asyncio.run(_run_dep(_SECRET, None, session="garbage"))
+
+
+# --- httpOnly session cookie ----------------------------------------------
+
+
+def test_login_sets_an_httponly_session_cookie() -> None:
+    client = _client(auth=True)
+    resp = client.post(
+        "/api/auth/login", json={"username": "admin", "password": _PASSWORD}
+    )
+    assert resp.status_code == 200
+    cookie = resp.cookies.get("fleetguard_session")
+    assert cookie == resp.json()["token"]
+    set_cookie = resp.headers["set-cookie"].lower()
+    assert "httponly" in set_cookie
+    assert "samesite=lax" in set_cookie
+
+
+def test_session_cookie_unlocks_the_gated_api() -> None:
+    client = _client(auth=True)
+    client.post("/api/auth/login", json={"username": "admin", "password": _PASSWORD})
+    # The TestClient persists the Set-Cookie; no Authorization header sent.
+    assert client.get("/api/vehicles").status_code == 200
+
+
+def test_logout_clears_the_session_cookie() -> None:
+    client = _client(auth=True)
+    client.post("/api/auth/login", json={"username": "admin", "password": _PASSWORD})
+    resp = client.post("/api/auth/logout")
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert client.get("/api/vehicles").status_code == 401
+
+
+def test_ws_accepts_a_valid_session_cookie() -> None:
+    client = _client(auth=True)
+    client.post("/api/auth/login", json={"username": "admin", "password": _PASSWORD})
+    with client as c, c.websocket_connect("/ws/positions") as ws:
+        assert "vehicles" in ws.receive_json()

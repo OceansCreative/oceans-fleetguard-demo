@@ -69,6 +69,10 @@ class Settings:
             ``app.api.auth.hash_password``) or a legacy bare sha256 hex digest.
             See ``app.api.auth.verify_password`` for both formats.
         auth_token_ttl_s: Session-token lifetime in seconds (default 1 hour).
+        auth_cookie_secure: When the login route sets the session token as an
+            httpOnly cookie, mark it ``Secure`` (HTTPS-only). Defaults to
+            ``True`` (safe for production behind TLS); set ``AUTH_COOKIE_SECURE``
+            false only for a same-origin plain-HTTP local test.
     """
 
     mock_mode: bool
@@ -87,6 +91,7 @@ class Settings:
     auth_username: str = ""
     auth_password_hash: str = ""
     auth_token_ttl_s: int = 3600
+    auth_cookie_secure: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -111,4 +116,5 @@ class Settings:
             auth_username=os.environ.get("AUTH_USERNAME", "").strip(),
             auth_password_hash=os.environ.get("AUTH_PASSWORD_HASH", "").strip(),
             auth_token_ttl_s=_get_int("AUTH_TOKEN_TTL_S", default=3600),
+            auth_cookie_secure=_get_bool("AUTH_COOKIE_SECURE", default=True),
         )

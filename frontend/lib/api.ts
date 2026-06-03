@@ -31,7 +31,13 @@ export function buildHeaders(): Record<string, string> {
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const headers = buildHeaders();
-  const response = await fetch(`${API_BASE_URL}${path}`, { signal, headers });
+  // `credentials: "include"` sends the httpOnly session cookie on a same-origin
+  // deployment; the Bearer header above covers the cross-origin case.
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    signal,
+    headers,
+    credentials: "include",
+  });
   if (response.status === 401) {
     throw new UnauthorizedError(path);
   }
