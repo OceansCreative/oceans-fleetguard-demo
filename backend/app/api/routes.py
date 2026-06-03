@@ -6,16 +6,17 @@ import hmac
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from app.alerts.history import AlertHistory
-from app.api.auth import issue_token, verify_password
+from app.api.auth import SESSION_COOKIE_NAME, issue_token, verify_password
 from app.api.fleet_service import FleetService
 from app.api.schemas import (
     AlertHistoryEntryOut,
     AlertOut,
     LoginRequest,
     LoginResponse,
+    LogoutResponse,
     VehicleOut,
 )
 from app.config import Settings
@@ -92,7 +93,7 @@ def create_auth_router(settings: Settings, *, now_fn: Callable[[], int]) -> APIR
     router = APIRouter(prefix="/api/auth", tags=["auth"])
 
     @router.post("/login")
-    def login(body: LoginRequest) -> LoginResponse:
+    def login(body: LoginRequest, response: Response) -> LoginResponse:
         # Evaluate both factors unconditionally (no short-circuit) and compare
         # the username in constant time, so response latency can't reveal
         # whether a guessed username is valid (user-enumeration side channel).
@@ -111,6 +112,24 @@ def create_auth_router(settings: Settings, *, now_fn: Callable[[], int]) -> APIR
         token = issue_token(
             settings.auth_secret, body.username, now, settings.auth_token_ttl_s
         )
+        # Also set the token as an httpOnly cookie (XSS-resistant). SameSite=Lax
+        # works for a same-origin deployment behind a reverse proxy; cross-origin
+        # callers can keep using the Bearer token from the response body.
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=token,
+            max_age=settings.auth_token_ttl_s,
+            httponly=True,
+            secure=settings.auth_cookie_secure,
+            samesite="lax",
+            path="/",
+        )
         return LoginResponse(token=token, expires_at=now + settings.auth_token_ttl_s)
+
+    @router.post("/logout")
+    def logout(response: Response) -> LogoutResponse:
+        """Clear the session cookie. Safe to call when not logged in."""
+        response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+        return LogoutResponse(ok=True)
 
     return router
