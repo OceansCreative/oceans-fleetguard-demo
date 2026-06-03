@@ -5,6 +5,7 @@ Kept dependency-free and immutable so it is trivial to construct in tests.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 
@@ -31,6 +32,25 @@ def _get_int(name: str, default: int) -> int:
 def _get_origins(name: str, default: str) -> tuple[str, ...]:
     raw = os.environ.get(name, default)
     return tuple(origin.strip() for origin in raw.split(",") if origin.strip())
+
+
+def _get_users(name: str) -> dict[str, str]:
+    """Parse ``name`` as a JSON ``{username: password_hash}`` object.
+
+    Returns an empty mapping when unset or malformed (the login gate then has
+    no users from this source). Hashes are kept verbatim -- see
+    ``app.api.auth.verify_password`` for the accepted formats.
+    """
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {str(k): str(v) for k, v in data.items() if isinstance(k, str) and k.strip()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +83,12 @@ class Settings:
             (the default) disables the login gate entirely — a SECOND, opt-in
             gate independent of ``api_key``. Set it to require a signed session
             token (issued by ``POST /api/auth/login``) on ``/api`` and the WS.
-        auth_username: The single login username accepted by the login route.
+        auth_users: Additional ``(username, password_hash)`` pairs from the
+            ``AUTH_USERS`` JSON object, enabling multiple login accounts. Merged
+            with ``auth_username``/``auth_password_hash`` (kept for backward
+            compatibility) by :meth:`credential_store`.
+        auth_username: A single login username accepted by the login route
+            (backward-compatible shorthand for a one-entry ``AUTH_USERS``).
         auth_password_hash: Digest of the login password. Either a salted
             ``scrypt$...`` digest (recommended; generate with
             ``app.api.auth.hash_password``) or a legacy bare sha256 hex digest.
@@ -88,6 +113,7 @@ class Settings:
     log_level: str = "INFO"
     log_format: str = "text"
     auth_secret: str = ""
+    auth_users: tuple[tuple[str, str], ...] = ()
     auth_username: str = ""
     auth_password_hash: str = ""
     auth_token_ttl_s: int = 3600
@@ -113,8 +139,21 @@ class Settings:
             log_level=os.environ.get("LOG_LEVEL", "INFO").strip().upper(),
             log_format=os.environ.get("LOG_FORMAT", "text").strip().lower(),
             auth_secret=os.environ.get("AUTH_SECRET", "").strip(),
+            auth_users=tuple(sorted(_get_users("AUTH_USERS").items())),
             auth_username=os.environ.get("AUTH_USERNAME", "").strip(),
             auth_password_hash=os.environ.get("AUTH_PASSWORD_HASH", "").strip(),
             auth_token_ttl_s=_get_int("AUTH_TOKEN_TTL_S", default=3600),
             auth_cookie_secure=_get_bool("AUTH_COOKIE_SECURE", default=True),
         )
+
+    def credential_store(self) -> dict[str, str]:
+        """Effective ``{username: password_hash}`` map for the login route.
+
+        Combines ``auth_users`` (from ``AUTH_USERS``) with the single-user
+        ``auth_username``/``auth_password_hash`` shorthand. The explicit
+        ``auth_users`` entry wins if a username appears in both.
+        """
+        users = dict(self.auth_users)
+        if self.auth_username:
+            users.setdefault(self.auth_username, self.auth_password_hash)
+        return users

@@ -7,6 +7,7 @@ import hashlib
 
 import pytest
 from app.api.auth import (
+    authenticate,
     hash_password,
     issue_token,
     make_auth_dependency,
@@ -24,7 +25,13 @@ _PASSWORD = "hunter2"
 _PW_HASH = hashlib.sha256(_PASSWORD.encode()).hexdigest()
 
 
-def _settings(*, auth: bool = False, api_key: str = "", ttl_s: int = 3600) -> Settings:
+def _settings(
+    *,
+    auth: bool = False,
+    api_key: str = "",
+    ttl_s: int = 3600,
+    users: tuple[tuple[str, str], ...] = (),
+) -> Settings:
     return Settings(
         mock_mode=True,
         cors_origins=("http://localhost:3000",),
@@ -34,7 +41,8 @@ def _settings(*, auth: bool = False, api_key: str = "", ttl_s: int = 3600) -> Se
         traccar_password="",
         traccar_transport="ws",
         api_key=api_key,
-        auth_secret=_SECRET if auth else "",
+        auth_secret=_SECRET if (auth or users) else "",
+        auth_users=users,
         auth_username="admin" if auth else "",
         auth_password_hash=_PW_HASH if auth else "",
         auth_token_ttl_s=ttl_s,
@@ -159,6 +167,29 @@ def test_verify_password_rejects_malformed_scrypt_digest() -> None:
     assert verify_password("scrypt$16384$8$1$@@@$@@@", _PASSWORD) is False
 
 
+# --- authenticate (multi-user credential store) ---------------------------
+
+
+def test_authenticate_accepts_a_known_user() -> None:
+    users = {"alice": hash_password("alice-pw"), "bob": hash_password("bob-pw")}
+    assert authenticate(users, "alice", "alice-pw") is True
+    assert authenticate(users, "bob", "bob-pw") is True
+
+
+def test_authenticate_rejects_wrong_password() -> None:
+    users = {"alice": hash_password("alice-pw")}
+    assert authenticate(users, "alice", "nope") is False
+
+
+def test_authenticate_rejects_unknown_user() -> None:
+    users = {"alice": hash_password("alice-pw")}
+    assert authenticate(users, "ghost", "alice-pw") is False
+
+
+def test_authenticate_on_empty_store_is_false() -> None:
+    assert authenticate({}, "alice", "anything") is False
+
+
 # --- login route ----------------------------------------------------------
 
 
@@ -197,6 +228,31 @@ def test_login_is_disabled_when_no_secret_is_set() -> None:
         "/api/auth/login", json={"username": "admin", "password": _PASSWORD}
     )
     assert resp.status_code == 401
+
+
+def test_login_supports_multiple_users_from_the_store() -> None:
+    users = (("alice", hash_password("alice-pw")), ("bob", hash_password("bob-pw")))
+    client = _client(users=users)
+    # Each configured account can log in and use the gated API.
+    for name, pw in (("alice", "alice-pw"), ("bob", "bob-pw")):
+        token = client.post(
+            "/api/auth/login", json={"username": name, "password": pw}
+        ).json()["token"]
+        ok = client.get("/api/vehicles", headers={"Authorization": f"Bearer {token}"})
+        assert ok.status_code == 200
+    # A wrong password and an unknown user are both rejected.
+    assert (
+        client.post(
+            "/api/auth/login", json={"username": "alice", "password": "bob-pw"}
+        ).status_code
+        == 401
+    )
+    assert (
+        client.post(
+            "/api/auth/login", json={"username": "carol", "password": "x"}
+        ).status_code
+        == 401
+    )
 
 
 # --- REST dependency ------------------------------------------------------

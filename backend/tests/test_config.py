@@ -14,11 +14,47 @@ def test_auth_defaults_to_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
         "AUTH_TOKEN_TTL_S",
     ):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("AUTH_USERS", raising=False)
     settings = Settings.from_env()
     assert settings.auth_secret == ""
     assert settings.auth_username == ""
     assert settings.auth_password_hash == ""
     assert settings.auth_token_ttl_s == 3600
+    assert settings.auth_users == ()
+    assert settings.credential_store() == {}
+
+
+def test_auth_users_json_is_parsed_and_merged(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AUTH_USERS", '{"alice": "hash-a", "bob": "hash-b"}')
+    monkeypatch.setenv("AUTH_USERNAME", "admin")
+    monkeypatch.setenv("AUTH_PASSWORD_HASH", "hash-admin")
+    settings = Settings.from_env()
+    # Stored sorted as pairs, and merged with the single-user shorthand.
+    assert settings.auth_users == (("alice", "hash-a"), ("bob", "hash-b"))
+    assert settings.credential_store() == {
+        "alice": "hash-a",
+        "bob": "hash-b",
+        "admin": "hash-admin",
+    }
+
+
+def test_auth_users_ignores_malformed_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AUTH_USERNAME", raising=False)
+    monkeypatch.delenv("AUTH_PASSWORD_HASH", raising=False)
+    monkeypatch.setenv("AUTH_USERS", "not-json")
+    assert Settings.from_env().auth_users == ()
+    # Valid JSON that isn't an object is ignored too.
+    monkeypatch.setenv("AUTH_USERS", '["alice", "bob"]')
+    assert Settings.from_env().auth_users == ()
+
+
+def test_explicit_user_wins_over_single_user_shorthand(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTH_USERS", '{"admin": "from-store"}')
+    monkeypatch.setenv("AUTH_USERNAME", "admin")
+    monkeypatch.setenv("AUTH_PASSWORD_HASH", "from-shorthand")
+    assert Settings.from_env().credential_store() == {"admin": "from-store"}
 
 
 def test_auth_env_is_read_and_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
