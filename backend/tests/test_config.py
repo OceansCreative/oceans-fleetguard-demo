@@ -24,12 +24,14 @@ def test_auth_defaults_to_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_auth_env_is_read_and_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AUTH_SECRET", "  s3cret  ")
     monkeypatch.setenv("AUTH_USERNAME", " admin ")
-    monkeypatch.setenv("AUTH_PASSWORD_HASH", "  ABCDEF  ")
+    # The hash is stripped but case-preserved: a scrypt digest carries
+    # case-sensitive base64; the legacy hex path lowercases at verify time.
+    monkeypatch.setenv("AUTH_PASSWORD_HASH", "  scrypt$16384$8$1$AbC$dEf  ")
     monkeypatch.setenv("AUTH_TOKEN_TTL_S", "900")
     settings = Settings.from_env()
     assert settings.auth_secret == "s3cret"
     assert settings.auth_username == "admin"
-    assert settings.auth_password_hash == "abcdef"
+    assert settings.auth_password_hash == "scrypt$16384$8$1$AbC$dEf"
     assert settings.auth_token_ttl_s == 900
 
 

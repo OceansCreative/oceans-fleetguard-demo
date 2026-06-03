@@ -7,6 +7,7 @@ import hashlib
 
 import pytest
 from app.api.auth import (
+    hash_password,
     issue_token,
     make_auth_dependency,
     token_is_valid,
@@ -126,6 +127,33 @@ def test_verify_password_rejects_wrong_password() -> None:
 
 def test_verify_password_rejects_empty_hash() -> None:
     assert verify_password("", _PASSWORD) is False
+
+
+def test_hash_password_roundtrips_with_scrypt() -> None:
+    digest = hash_password(_PASSWORD)
+    assert digest.startswith("scrypt$")
+    assert verify_password(digest, _PASSWORD) is True
+    assert verify_password(digest, "wrong") is False
+
+
+def test_hash_password_uses_a_random_salt() -> None:
+    # Two hashes of the same password differ (distinct random salts), but both
+    # verify -- the property a salted KDF must have.
+    first = hash_password(_PASSWORD)
+    second = hash_password(_PASSWORD)
+    assert first != second
+    assert verify_password(first, _PASSWORD) is True
+    assert verify_password(second, _PASSWORD) is True
+
+
+def test_hash_password_accepts_injected_salt_for_determinism() -> None:
+    salt = b"sixteen-byte-salt"[:16]
+    assert hash_password(_PASSWORD, salt=salt) == hash_password(_PASSWORD, salt=salt)
+
+
+def test_verify_password_rejects_malformed_scrypt_digest() -> None:
+    assert verify_password("scrypt$not$enough$fields", _PASSWORD) is False
+    assert verify_password("scrypt$16384$8$1$@@@$@@@", _PASSWORD) is False
 
 
 # --- login route ----------------------------------------------------------

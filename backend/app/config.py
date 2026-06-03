@@ -64,9 +64,10 @@ class Settings:
             gate independent of ``api_key``. Set it to require a signed session
             token (issued by ``POST /api/auth/login``) on ``/api`` and the WS.
         auth_username: The single login username accepted by the login route.
-        auth_password_hash: Lowercase sha256 hex digest of the login password.
-            See ``app.api.auth.verify_password`` for the (deliberately simple)
-            scheme and its production caveats.
+        auth_password_hash: Digest of the login password. Either a salted
+            ``scrypt$...`` digest (recommended; generate with
+            ``app.api.auth.hash_password``) or a legacy bare sha256 hex digest.
+            See ``app.api.auth.verify_password`` for both formats.
         auth_token_ttl_s: Session-token lifetime in seconds (default 1 hour).
     """
 
@@ -108,6 +109,6 @@ class Settings:
             log_format=os.environ.get("LOG_FORMAT", "text").strip().lower(),
             auth_secret=os.environ.get("AUTH_SECRET", "").strip(),
             auth_username=os.environ.get("AUTH_USERNAME", "").strip(),
-            auth_password_hash=os.environ.get("AUTH_PASSWORD_HASH", "").strip().lower(),
+            auth_password_hash=os.environ.get("AUTH_PASSWORD_HASH", "").strip(),
             auth_token_ttl_s=_get_int("AUTH_TOKEN_TTL_S", default=3600),
         )
