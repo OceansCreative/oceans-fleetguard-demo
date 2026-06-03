@@ -1,61 +1,94 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
+import { isAuthed, logout } from "@/lib/auth";
 import { useFleet } from "@/lib/useFleet";
+import { useLang, useT } from "@/lib/i18n";
+import { AlertHistoryPanel } from "@/components/AlertHistoryPanel";
 import { AlertsBanner } from "@/components/AlertsBanner";
+import { LoginForm } from "@/components/LoginForm";
 import { VehicleDetail } from "@/components/VehicleDetail";
 import { VehicleList } from "@/components/VehicleList";
 
-// Leaflet touches `window`, so the map must be client-only (no SSR).
+// MapLibre touches `window`, so the map must be client-only (no SSR).
 const FleetMap = dynamic(
   () => import("@/components/FleetMap").then((m) => m.FleetMap),
   {
     ssr: false,
-    loading: () => <div style={{ padding: "1rem" }}>Loading map…</div>,
+    loading: () => <div className="map-loading">Loading map…</div>,
   },
 );
 
-const CONNECTION_LABEL = {
-  connecting: "● connecting",
-  live: "● live",
-  offline: "● offline",
-} as const;
-
 export function Dashboard(): React.JSX.Element {
-  const { vehicles, connection } = useFleet();
+  // When the login gate is enabled and our session is missing/expired, a REST
+  // 401 flips this on and we show the login form instead of the dashboard.
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const onUnauthorized = useCallback(() => setNeedsLogin(true), []);
+  const { vehicles, connection } = useFleet({ onUnauthorized });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected =
     vehicles.find((vehicle) => vehicle.id === selectedId) ?? null;
+  const t = useT();
+  const { lang, setLang } = useLang();
+  // Only offer "Sign out" when a session token is actually in use; the keyless
+  // quickstart (login disabled) shows nothing extra.
+  const showLogout = isAuthed();
+
+  if (needsLogin) {
+    // Remount the dashboard on success so useFleet re-seeds with the token.
+    return <LoginForm onAuthed={() => window.location.reload()} />;
+  }
+
+  function handleLogout(): void {
+    logout();
+    setNeedsLogin(true);
+  }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: "0.6rem 1rem",
-          borderBottom: "1px solid #e5e7eb",
-        }}
-      >
-        <strong>🛰️ FleetGuard</strong>
-        <span style={{ color: connection === "live" ? "#16a34a" : "#9ca3af" }}>
-          {CONNECTION_LABEL[connection]}
-        </span>
+    <div className="shell">
+      <header className="app-header">
+        <div className="brand">
+          <span className="brand-mark" aria-hidden>
+            🛰
+          </span>
+          <span className="brand-text">
+            <span className="brand-name">{t("app.title")}</span>
+            <span className="brand-sub">{t("app.sub")}</span>
+          </span>
+        </div>
+        <div className="header-right">
+          <span className={`conn conn--${connection}`}>
+            <span className="conn-dot" />
+            {t(`status.${connection}` as Parameters<typeof t>[0])}
+          </span>
+          <button
+            type="button"
+            className="lang-toggle"
+            onClick={() => setLang(lang === "en" ? "ja" : "en")}
+            aria-label="Switch language"
+          >
+            {t("lang.toggle")}
+          </button>
+          {showLogout && (
+            <button type="button" className="logout-btn" onClick={handleLogout}>
+              {t("auth.signOut")}
+            </button>
+          )}
+        </div>
       </header>
 
       <AlertsBanner vehicles={vehicles} />
 
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <aside
-          style={{
-            width: 280,
-            borderRight: "1px solid #e5e7eb",
-            overflowY: "auto",
-          }}
-        >
+      <div className="body">
+        <aside className="col-list scroll">
+          <div className="col-head">
+            <span className="col-title">{t("fleet.title")}</span>
+            <span className="col-count">
+              {vehicles.length} {t("fleet.vehicles")}
+            </span>
+          </div>
           <VehicleList
             vehicles={vehicles}
             selectedId={selectedId}
@@ -63,7 +96,7 @@ export function Dashboard(): React.JSX.Element {
           />
         </aside>
 
-        <main style={{ flex: 1, minWidth: 0 }}>
+        <main className="col-map">
           <FleetMap
             vehicles={vehicles}
             selectedId={selectedId}
@@ -71,15 +104,10 @@ export function Dashboard(): React.JSX.Element {
           />
         </main>
 
-        <aside
-          style={{
-            width: 320,
-            borderLeft: "1px solid #e5e7eb",
-            padding: "1rem",
-            overflowY: "auto",
-          }}
-        >
+        <aside className="col-detail scroll">
           <VehicleDetail vehicle={selected} />
+          <div className="col-detail-divider" />
+          <AlertHistoryPanel />
         </aside>
       </div>
     </div>

@@ -24,15 +24,35 @@ export interface VehiclePosition {
   recorded_at: string;
 }
 
+/** A vehicle's circular geofence (center + radius in meters). */
+export interface VehicleGeofence {
+  lat: number;
+  lon: number;
+  radius_m: number;
+}
+
 export interface Vehicle {
   id: string;
   name: string;
   plate: string;
   position: VehiclePosition;
+  geofence: VehicleGeofence | null;
   alerts: VehicleAlert[];
 }
 
 /** Shape of the WebSocket broadcast payload from `/ws/positions`. */
 export interface PositionsMessage {
   vehicles: Vehicle[];
+}
+
+/** A single alert-activation event from GET /api/alerts/history. */
+export interface AlertHistoryEntry {
+  vehicle_id: string;
+  vehicle_name: string;
+  alert_type: string;
+  alert_severity: AlertSeverity;
+  alert_reason: string;
+  lat: number;
+  lon: number;
+  recorded_at: string;
 }

@@ -1,6 +1,8 @@
-import { formatSpeedKmh } from "@/lib/format";
+import { formatDistanceKm, formatSpeedKmh } from "@/lib/format";
 import type { Vehicle } from "@/lib/types";
 import { AlertBadge } from "@/components/AlertBadge";
+import { SEVERITY_COLOR } from "@/components/severity";
+import { useT } from "@/lib/i18n";
 
 function Row({
   label,
@@ -10,11 +12,9 @@ function Row({
   value: string;
 }): React.JSX.Element {
   return (
-    <div
-      style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}
-    >
-      <span style={{ color: "#6b7280" }}>{label}</span>
-      <span>{value}</span>
+    <div className="drow">
+      <span className="drow-label">{label}</span>
+      <span className="drow-value">{value}</span>
     </div>
   );
 }
@@ -24,47 +24,76 @@ export function VehicleDetail({
 }: {
   vehicle: Vehicle | null;
 }): React.JSX.Element {
+  const t = useT();
   if (vehicle === null) {
     return (
-      <p style={{ color: "#6b7280" }}>Select a vehicle to see its details.</p>
+      <div className="detail-empty">
+        <span className="detail-empty-mark" aria-hidden>
+          🛰
+        </span>
+        <span>{t("fleet.noVehicleSelected")}</span>
+      </div>
     );
   }
   const { position } = vehicle;
+  const idle = !position.ignition_on;
+  const dotColor = vehicle.alerts.length > 0 ? "#ef4d54" : "#22c55e";
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-      <h2 style={{ margin: 0 }}>{vehicle.name}</h2>
-      <Row label="Plate" value={vehicle.plate} />
-      <Row label="Speed" value={formatSpeedKmh(position.speed_mps)} />
-      <Row label="Heading" value={`${Math.round(position.course_deg)}°`} />
-      <Row label="Ignition" value={position.ignition_on ? "on" : "off"} />
-      <Row
-        label="Position"
-        value={`${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}`}
-      />
-      <Row
-        label="Last update"
-        value={new Date(position.recorded_at).toLocaleTimeString()}
-      />
+    <div className="detail">
+      <div className="detail-title">
+        <span
+          className="vrow-dot"
+          style={{ background: dotColor }}
+          aria-hidden
+        />
+        <h2>{vehicle.name}</h2>
+      </div>
 
-      <h3 style={{ margin: "0.4rem 0 0" }}>Alerts</h3>
+      <div className="detail-rows">
+        <Row label={t("detail.plate")} value={vehicle.plate} />
+        <Row
+          label={t("detail.speed")}
+          value={formatSpeedKmh(position.speed_mps)}
+        />
+        <Row
+          label={t("detail.heading")}
+          value={`${Math.round(position.course_deg)}°`}
+        />
+        <Row
+          label={t("detail.ignition")}
+          value={idle ? t("detail.ignitionOff") : t("detail.ignitionOn")}
+        />
+        <Row
+          label={t("detail.position")}
+          value={`${position.lat.toFixed(4)}, ${position.lon.toFixed(4)}`}
+        />
+        <Row
+          label={t("detail.lastUpdate")}
+          value={new Date(position.recorded_at).toLocaleTimeString()}
+        />
+        {vehicle.geofence !== null && (
+          <Row
+            label={t("detail.geofence")}
+            value={`${formatDistanceKm(vehicle.geofence.radius_m)} ${t("detail.geofenceRadius")}`}
+          />
+        )}
+      </div>
+
+      <span className="section-label">{t("detail.alerts")}</span>
       {vehicle.alerts.length === 0 ? (
-        <p style={{ color: "#16a34a", margin: 0 }}>No active alerts.</p>
+        <p className="detail-ok">✓ {t("detail.noAlerts")}</p>
       ) : (
-        <ul style={{ margin: 0, paddingLeft: 0, listStyle: "none" }}>
+        <ul className="alert-list">
           {vehicle.alerts.map((alert) => (
             <li
               key={alert.type}
-              style={{
-                display: "flex",
-                gap: "0.5rem",
-                alignItems: "center",
-                marginBottom: "0.3rem",
-              }}
+              className="alert-card"
+              style={{ borderLeftColor: SEVERITY_COLOR[alert.severity] }}
             >
               <AlertBadge severity={alert.severity}>
                 {alert.severity}
               </AlertBadge>
-              <span>{alert.reason}</span>
+              <span className="alert-reason">{alert.reason}</span>
             </li>
           ))}
         </ul>

@@ -101,3 +101,31 @@ def check_abnormal_heading(
         severity=Severity.INFO,
         reason=f"heading changed {change:.0f}° (> {max_change_deg:.0f}°)",
     )
+
+
+def check_signal_lost(
+    current: Position,
+    now: datetime,
+    max_silence_s: float,
+) -> Alert | None:
+    """Fire when the vehicle's position has not updated for too long.
+
+    A prolonged silence is a classic indicator of GPS jamming or physical
+    tracker tampering.  Exactly equal to the threshold does **not** fire.
+
+    Args:
+        current: The latest position sample on record.
+        now: The wall-clock time used as the reference for staleness checks.
+        max_silence_s: Maximum acceptable gap in seconds before alerting.
+
+    Returns:
+        A CRITICAL alert when the gap exceeds the threshold, otherwise ``None``.
+    """
+    silence = (now - current.recorded_at).total_seconds()
+    if silence <= max_silence_s:
+        return None
+    return Alert(
+        type=AlertType.SIGNAL_LOST,
+        severity=Severity.CRITICAL,
+        reason=f"no position update for {silence:.0f}s (possible jamming/tampering)",
+    )

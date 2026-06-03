@@ -32,5 +32,39 @@ Matsue / Yasugi / Yonago — no Traccar required.
 | WS     | `/ws/positions`       | Live position + alert snapshots (pushed)      |
 
 Each vehicle's alerts come from the pure-function detection rules in
-[`app/detection`](./app/detection). When `MOCK_MODE=false` the fleet is empty
-(the live Traccar relay lands in a later PR).
+[`app/detection`](./app/detection).
+
+## Data sources
+
+The API is agnostic about where positions come from: every source implements the
+same [`FleetSource`](./app/sources/base.py) contract — `start()`/`aclose()`
+bracket its lifetime, `advance()` lets pull sources tick, and `snapshot()` reads
+the current state — so the routes, streamer and detection engine never know the
+difference.
+
+- **Mock** (`MOCK_MODE=true`): a deterministic, seedable simulation
+  ([`app/mock`](./app/mock)).
+- **Traccar relay** (`MOCK_MODE=false`): set `TRACCAR_BASE_URL`,
+  `TRACCAR_USERNAME` (login email), `TRACCAR_PASSWORD`, and pick a transport
+  with `TRACCAR_TRANSPORT`:
+  - `ws` (default) — [`TraccarStreamSource`](./app/traccar/stream_source.py)
+    authenticates via `/api/session`, then streams `/api/socket` in a
+    background task, folding each frame into the snapshot. Reconnects on drop.
+  - `rest` — [`TraccarSource`](./app/traccar/source.py) polls `/api/devices` +
+    `/api/positions` on each tick; a failed poll keeps the last good snapshot.
+
+The interesting part of the relay is [`app/traccar/normalize.py`](./app/traccar/normalize.py):
+pure functions that turn Traccar's wire format into our domain — converting
+**speed from knots to m/s**, inferring ignition state from the free-form
+`attributes` map (falling back to `motion`, then to speed), parsing timestamps,
+joining devices with their latest position (REST), merging incremental position
+frames into the cache (WebSocket), and parsing circular geofences from their WKT
+`area`. Being pure, they're exhaustively unit-tested without touching the
+network; the HTTP/WS plumbing
+([`client.py`](./app/traccar/client.py), [`connect.py`](./app/traccar/connect.py))
+stays deliberately thin and is the only code that talks to a real server.
+
+> The geofence rule runs for a relayed vehicle when it has a **circular**
+> geofence assigned in Traccar (via its `geofenceIds`); polygon/polyline
+> geofences are ignored and that vehicle simply runs the other four rules
+> (off-hours, ignition-off, abnormal speed/heading).
