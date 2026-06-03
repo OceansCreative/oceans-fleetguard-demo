@@ -23,9 +23,18 @@ cut a tagged release yet, so everything lands under **Unreleased**.
   `/ws/positions` (`?key=`), constant-time comparison.
 - **Optional user login** — a second, independent opt-in gate issuing signed
   stdlib HS256 session tokens via `POST /api/auth/login`, with a login UI.
+  Supports **multiple accounts** via an `AUTH_USERS` JSON map
+  (`{username: password_hash}`), merged with the single-user
+  `AUTH_USERNAME`/`AUTH_PASSWORD_HASH` shorthand. Login is user-enumeration
+  resistant (constant-time, hashes unconditionally).
+- **AUTH_USERS generator CLI** — `python -m app.tools.gen_auth_users alice bob`
+  prompts for each password, scrypt-hashes it, and prints a ready-to-paste
+  `AUTH_USERS=...` line.
 - **Per-IP rate limiting** — opt-in `RATE_LIMIT_PER_MINUTE` on `/api` and `/ws`.
 - **Observability** — structured (JSON) logging with request IDs and a `/ready`
-  readiness probe (`LOG_LEVEL` / `LOG_FORMAT`).
+  readiness probe (`LOG_LEVEL` / `LOG_FORMAT`). Gated `/api` requests emit a
+  **per-user audit log** line, and the authenticated username rides on every
+  log record for the request (the `user` field in JSON logs).
 - **CI & supply chain** — GitHub Actions (backend + frontend gates), Dependabot
   (pip / npm / actions), and CodeQL.
 - **Developer experience** — `Makefile` (`make lint` / `test` / `fmt` / `dev`)

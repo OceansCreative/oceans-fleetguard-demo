@@ -55,12 +55,13 @@ instance.
   `/api/alerts/history` log and an opt-in **webhook** on CRITICAL alerts
   (Slack / Discord / any receiver).
 - 🔐 **Auth & hardening** (all opt-in, off by default) — shared **API key** on
-  `/api` + `/ws`, a **user login** gate (signed session tokens), per-IP **rate
-  limiting**, and tightened CORS.
+  `/api` + `/ws`, a **multi-user login** gate (signed session tokens, scrypt
+  password hashes), per-IP **rate limiting**, and tightened CORS.
 - 🌐 **Bilingual UI** — EN / 日本語 toggle (i18n), browser-detected and
   persisted.
-- 📈 **Observability** — structured (JSON) logging with request IDs, a `/ready`
-  readiness probe, plus CI, Dependabot, and CodeQL.
+- 📈 **Observability** — structured (JSON) logging with request IDs and a
+  **per-user audit trail**, a `/ready` readiness probe, plus CI, Dependabot,
+  and CodeQL.
 - 🧪 **Mock mode** — simulated vehicles around Matsue / Yasugi / Yonago, toggled
   by an environment variable.
 
@@ -175,11 +176,11 @@ WebSocket API を整形して扱いやすい形に正規化し、その上に盗
 - 🔔 **アラート** — 判定成立の瞬間に表示。`/api/alerts/history` で履歴取得、
   CRITICAL 時の **Webhook**（Slack / Discord など）にオプトインで対応
 - 🔐 **認証・堅牢化**（すべて opt-in・既定 OFF） — `/api`・`/ws` の共有 **API
-  キー**、**ユーザーログイン**（署名付きセッション）、IP 単位の**レート制限**、
-  CORS 厳格化
+  キー**、**マルチユーザーログイン**（署名付きセッション・scrypt パスワード
+  ハッシュ）、IP 単位の**レート制限**、CORS 厳格化
 - 🌐 **多言語 UI** — EN / 日本語 トグル（i18n）。ブラウザ判定＋永続化
-- 📈 **可観測性** — request-id 付き構造化（JSON）ログ、`/ready` レディネス、
-  CI・Dependabot・CodeQL
+- 📈 **可観測性** — request-id 付き構造化（JSON）ログと**ユーザー別監査ログ**、
+  `/ready` レディネス、CI・Dependabot・CodeQL
 - 🧪 **mock モード** — 松江・安来・米子周辺で動く擬似車両を環境変数で切替
 
 ### アーキテクチャ

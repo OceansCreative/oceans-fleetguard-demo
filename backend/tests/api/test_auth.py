@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 
 import pytest
 from app.api.auth import (
@@ -17,6 +18,7 @@ from app.api.auth import (
 )
 from app.config import Settings
 from app.main import create_app
+from fastapi import Request
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -255,6 +257,37 @@ def test_login_supports_multiple_users_from_the_store() -> None:
     )
 
 
+class _ListHandler(logging.Handler):
+    """Collect emitted records in a list (caplog is unusable here: create_app
+    reconfigures the root logger and drops caplog's handler)."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.INFO)
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+def test_authenticated_request_emits_per_user_audit_log() -> None:
+    client = _client(auth=True)
+    token = client.post(
+        "/api/auth/login", json={"username": "admin", "password": _PASSWORD}
+    ).json()["token"]
+    handler = _ListHandler()
+    access_log = logging.getLogger("app.api.access")
+    access_log.addHandler(handler)
+    access_log.setLevel(logging.INFO)
+    try:
+        ok = client.get("/api/vehicles", headers={"Authorization": f"Bearer {token}"})
+    finally:
+        access_log.removeHandler(handler)
+    assert ok.status_code == 200
+    assert handler.records, "expected an audit log record for the gated request"
+    message = handler.records[-1].getMessage()
+    assert "admin" in message and "/api/vehicles" in message
+
+
 # --- REST dependency ------------------------------------------------------
 
 
@@ -303,11 +336,15 @@ def test_ws_rejects_a_missing_token_when_auth_is_enabled() -> None:
 # --- dependency unit (no app) ---------------------------------------------
 
 
+def _fake_request(path: str = "/api/vehicles") -> Request:
+    return Request({"type": "http", "method": "GET", "path": path, "headers": []})
+
+
 async def _run_dep(
     secret: str, authorization: str | None, session: str | None = None
 ) -> None:
     dep = make_auth_dependency(secret, lambda: 0)
-    await dep(authorization=authorization, session=session)
+    await dep(_fake_request(), authorization=authorization, session=session)
 
 
 def test_make_auth_dependency_is_noop_when_disabled() -> None:

@@ -16,6 +16,7 @@ import logging
 import traceback
 from typing import Any
 
+from app.observability.principal import current_principal
 from app.observability.request_id import current_request_id
 
 
@@ -28,6 +29,7 @@ class _JsonFormatter(logging.Formatter):
       - ``logger``     – logger name.
       - ``msg``        – formatted message.
       - ``request_id`` – present only when a request-ID is active.
+      - ``user``       – present only when an authenticated principal is active.
     """
 
     def format(self, record: logging.LogRecord) -> str:
@@ -40,6 +42,9 @@ class _JsonFormatter(logging.Formatter):
         rid = current_request_id()
         if rid is not None:
             entry["request_id"] = rid
+        user = current_principal()
+        if user is not None:
+            entry["user"] = user
         if record.exc_info:
             entry["exc"] = self.formatException(record.exc_info)
         elif record.exc_text:
