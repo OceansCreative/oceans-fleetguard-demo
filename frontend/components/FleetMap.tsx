@@ -217,6 +217,21 @@ function geofenceData(
   };
 }
 
+/** A LineString of the selected vehicle's breadcrumb trail (needs ≥ 2 points). */
+function trailData(trail: [number, number][]): GeoJSON.FeatureCollection {
+  if (trail.length < 2) return EMPTY;
+  return {
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: trail },
+        properties: {},
+      },
+    ],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Arrow icon: a simple SDF chevron/arrow pointing up (north = 0°).
 // Rendered as a 17×17 pixel canvas ImageData so MapLibre can tint it via the
@@ -344,10 +359,13 @@ export function FleetMap({
   vehicles,
   selectedId,
   onSelect,
+  trail = [],
 }: {
   vehicles: Vehicle[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** [lon, lat] breadcrumb points (oldest-first) for the selected vehicle. */
+  trail?: [number, number][];
 }): React.JSX.Element {
   const t = useT();
   const container = useRef<HTMLDivElement>(null);
@@ -357,8 +375,8 @@ export function FleetMap({
   // Keep the latest props/selection reachable from the (stable) map callbacks.
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
-  const dataRef = useRef({ vehicles, selectedId });
-  dataRef.current = { vehicles, selectedId };
+  const dataRef = useRef({ vehicles, selectedId, trail });
+  dataRef.current = { vehicles, selectedId, trail };
   const basemapRef = useRef<BasemapId>("light");
   const pannedTo = useRef<string | null>(null);
   // Re-attach overlays after a runtime style change (set up by the init effect).
@@ -462,6 +480,36 @@ export function FleetMap({
           },
         });
       }
+      // Breadcrumb trail for the selected vehicle, rendered under the markers.
+      // `lineMetrics` enables the line-progress gradient that fades the trail
+      // from transparent (oldest) to the accent colour (newest).
+      if (!map.getSource("trail")) {
+        map.addSource("trail", {
+          type: "geojson",
+          data: EMPTY,
+          lineMetrics: true,
+        });
+      }
+      if (!map.getLayer("trail-line")) {
+        map.addLayer({
+          id: "trail-line",
+          type: "line",
+          source: "trail",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-width": 3,
+            "line-gradient": [
+              "interpolate",
+              ["linear"],
+              ["line-progress"],
+              0,
+              "rgba(47,111,224,0)",
+              1,
+              "#2f6fe0",
+            ],
+          },
+        });
+      }
       if (!map.getSource("vehicles")) {
         map.addSource("vehicles", { type: "geojson", data: EMPTY });
       }
@@ -533,12 +581,15 @@ export function FleetMap({
     const reattach = () => {
       addOverlays();
       ready.current = true;
-      const { vehicles: v, selectedId: s } = dataRef.current;
+      const { vehicles: v, selectedId: s, trail: tr } = dataRef.current;
       (map.getSource("vehicles") as maplibregl.GeoJSONSource).setData(
         vehicleData(v, s),
       );
       (map.getSource("geofence") as maplibregl.GeoJSONSource).setData(
         geofenceData(v, s),
+      );
+      (map.getSource("trail") as maplibregl.GeoJSONSource).setData(
+        trailData(tr),
       );
       clearLabels();
       const theme = offlineTheme(basemapRef.current);
@@ -712,6 +763,10 @@ export function FleetMap({
       map.getSource("geofence") as maplibregl.GeoJSONSource | undefined
     )?.setData(geofenceData(vehicles, selectedId));
 
+    (map.getSource("trail") as maplibregl.GeoJSONSource | undefined)?.setData(
+      trailData(trail),
+    );
+
     // Recenter on a newly selected vehicle (not on every position tick).
     if (selectedId !== pannedTo.current) {
       pannedTo.current = selectedId;
@@ -745,7 +800,7 @@ export function FleetMap({
         }
       }
     }
-  }, [vehicles, selectedId]);
+  }, [vehicles, selectedId, trail]);
 
   return (
     <div style={{ position: "relative", height: "100%", width: "100%" }}>
