@@ -26,7 +26,9 @@ export function Dashboard(): React.JSX.Element {
   // 401 flips this on and we show the login form instead of the dashboard.
   const [needsLogin, setNeedsLogin] = useState(false);
   const onUnauthorized = useCallback(() => setNeedsLogin(true), []);
-  const { vehicles, connection, speedHistory } = useFleet({ onUnauthorized });
+  const { vehicles, connection, speedHistory, positionHistory } = useFleet({
+    onUnauthorized,
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected =
     vehicles.find((vehicle) => vehicle.id === selectedId) ?? null;
@@ -101,6 +103,9 @@ export function Dashboard(): React.JSX.Element {
             vehicles={vehicles}
             selectedId={selectedId}
             onSelect={setSelectedId}
+            trail={
+              selected !== null ? (positionHistory[selected.id] ?? []) : []
+            }
           />
         </main>
 
