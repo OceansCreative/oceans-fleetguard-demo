@@ -19,10 +19,95 @@ function Row({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Speed sparkline: a small inline SVG rendered from a rolling buffer.
+// ---------------------------------------------------------------------------
+
+/** Width × height of the sparkline SVG in pixels. */
+const SPARK_W = 160;
+const SPARK_H = 38;
+const SPARK_PADDING = 2;
+
+/**
+ * Render a polyline sparkline from an array of speed values (m/s).
+ * Handles empty and single-point cases gracefully.
+ */
+export function SpeedSparkline({
+  samples,
+}: {
+  samples: number[];
+}): React.JSX.Element {
+  if (samples.length === 0) {
+    return (
+      <svg
+        width={SPARK_W}
+        height={SPARK_H}
+        aria-hidden
+        className="sparkline sparkline--empty"
+        viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
+      >
+        <line
+          x1={SPARK_PADDING}
+          y1={SPARK_H / 2}
+          x2={SPARK_W - SPARK_PADDING}
+          y2={SPARK_H / 2}
+          className="sparkline-zero"
+        />
+      </svg>
+    );
+  }
+
+  const max = Math.max(...samples, 0.001); // avoid divide-by-zero
+  const plotH = SPARK_H - SPARK_PADDING * 2;
+  const plotW = SPARK_W - SPARK_PADDING * 2;
+
+  // Map each sample to an SVG coordinate.
+  const points = samples.map((val, i) => {
+    const x = SPARK_PADDING + (i / Math.max(samples.length - 1, 1)) * plotW;
+    const y = SPARK_PADDING + plotH - (val / max) * plotH;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+
+  // Area fill: close the path along the bottom.
+  const lastPoint =
+    points[points.length - 1] ??
+    `${SPARK_W - SPARK_PADDING},${SPARK_H - SPARK_PADDING}`;
+  const firstPoint = points[0] ?? `${SPARK_PADDING},${SPARK_H - SPARK_PADDING}`;
+  const lastX = lastPoint.split(",")[0] ?? String(SPARK_W - SPARK_PADDING);
+  const firstX = firstPoint.split(",")[0] ?? String(SPARK_PADDING);
+  const bottomY = String(SPARK_H - SPARK_PADDING);
+  const areaPath = `M ${firstPoint} L ${points.join(" L ")} L ${lastX},${bottomY} L ${firstX},${bottomY} Z`;
+
+  // Latest dot position.
+  const dotPoint =
+    points[points.length - 1] ?? `${SPARK_W - SPARK_PADDING},${SPARK_H / 2}`;
+  const dotParts = dotPoint.split(",");
+  const dotX = dotParts[0];
+  const dotY = dotParts[1];
+
+  return (
+    <svg
+      width={SPARK_W}
+      height={SPARK_H}
+      aria-hidden
+      className="sparkline"
+      viewBox={`0 0 ${SPARK_W} ${SPARK_H}`}
+    >
+      <path d={areaPath} className="sparkline-area" />
+      <polyline points={points.join(" ")} className="sparkline-line" />
+      {dotX !== undefined && dotY !== undefined && (
+        <circle cx={dotX} cy={dotY} r={2.5} className="sparkline-dot" />
+      )}
+    </svg>
+  );
+}
+
 export function VehicleDetail({
   vehicle,
+  speedSamples = [],
 }: {
   vehicle: Vehicle | null;
+  speedSamples?: number[];
 }): React.JSX.Element {
   const t = useT();
   if (vehicle === null) {
@@ -77,6 +162,11 @@ export function VehicleDetail({
             value={`${formatDistanceKm(vehicle.geofence.radius_m)} ${t("detail.geofenceRadius")}`}
           />
         )}
+      </div>
+
+      <div className="sparkline-section">
+        <span className="section-label">{t("detail.speedRecent")}</span>
+        <SpeedSparkline samples={speedSamples} />
       </div>
 
       <span className="section-label">{t("detail.alerts")}</span>

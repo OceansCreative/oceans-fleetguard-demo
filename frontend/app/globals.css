@@ -756,3 +756,167 @@ button {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ---- Speed sparkline --------------------------------------------- */
+.sparkline-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.sparkline {
+  display: block;
+  overflow: visible;
+}
+/* Filled area under the line — primary tint at low opacity */
+.sparkline-area {
+  fill: var(--primary);
+  fill-opacity: 0.1;
+}
+/* The line itself */
+.sparkline-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Latest-value dot */
+.sparkline-dot {
+  fill: var(--primary);
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+/* Zero-baseline for empty state */
+.sparkline-zero {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+/* ================================================================== *
+ * Micro-interactions & animations (Feature 3)
+ * All non-essential animations are suppressed when the user opts out
+ * via prefers-reduced-motion: reduce.
+ * ================================================================== */
+
+/* ---- Banner: gentle pulse on CRITICAL alert ---------------------- */
+@keyframes banner-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 77, 84, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 77, 84, 0);
+  }
+}
+.banner {
+  animation: banner-pulse 2.4s ease-in-out infinite;
+}
+
+/* Alert badge count in the vehicle list row — subtle throb on critical */
+@keyframes badge-throb {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+}
+.vrow-alerts {
+  animation: badge-throb 2s ease-in-out infinite;
+}
+
+/* ---- Vehicle list row hover / selection transitions -------------- */
+/* Already has transition declared; add active (press) feedback */
+.vrow:active {
+  transform: translateY(0) scale(0.985);
+  box-shadow: none;
+  transition:
+    background 0.08s ease,
+    transform 0.08s ease,
+    box-shadow 0.08s ease;
+}
+
+/* ---- Detail panel slide-in when a vehicle becomes selected ------- */
+@keyframes detail-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.detail {
+  animation: detail-slide-in 0.28s ease-out both;
+}
+
+/* ---- Button press / hover feedback -------------------------------- */
+/* lang-toggle */
+.lang-toggle {
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+.lang-toggle:active {
+  transform: scale(0.93);
+}
+
+/* logout-btn */
+.logout-btn:active {
+  transform: scale(0.93);
+  transition:
+    background 0.08s ease,
+    transform 0.08s ease;
+}
+
+/* basemap switch buttons */
+.map-switch__btn {
+  transition:
+    background 0.14s ease,
+    color 0.14s ease,
+    transform 0.1s ease;
+}
+.map-switch__btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+/* login submit */
+.login-submit {
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+.login-submit:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ---- Respect prefers-reduced-motion ------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  /* Disable all non-essential keyframe animations */
+  .banner,
+  .vrow-alerts,
+  .detail,
+  .conn--live .conn-dot {
+    animation: none;
+  }
+
+  /* Disable transform micro-interactions on buttons */
+  .vrow,
+  .vrow:hover,
+  .vrow:active,
+  .lang-toggle,
+  .lang-toggle:active,
+  .logout-btn,
+  .logout-btn:active,
+  .map-switch__btn,
+  .map-switch__btn:active,
+  .login-submit,
+  .login-submit:active {
+    transition: none;
+    transform: none;
+  }
+}

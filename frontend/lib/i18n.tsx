@@ -62,7 +62,8 @@ export type MessageKey =
   | "auth.serverUnreachable"
   | "history.title"
   | "history.empty"
-  | "history.ago";
+  | "history.ago"
+  | "detail.speedRecent";
 
 // ---------------------------------------------------------------------------
 // Message dictionary
@@ -118,6 +119,7 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "history.title": "Alert History",
     "history.empty": "No alerts recorded yet.",
     "history.ago": "ago",
+    "detail.speedRecent": "Speed (recent)",
   },
   ja: {
     "app.title": "FleetGuard",
@@ -169,6 +171,7 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "history.title": "アラート履歴",
     "history.empty": "アラートの記録はまだありません。",
     "history.ago": "前",
+    "detail.speedRecent": "速度（直近）",
   },
 };
 
