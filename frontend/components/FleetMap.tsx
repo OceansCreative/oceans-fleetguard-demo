@@ -326,6 +326,20 @@ function startGlowAnimation(map: maplibregl.Map, state: GlowState): void {
   state.rafId = requestAnimationFrame(tick);
 }
 
+/**
+ * True when the user has asked the OS to minimise non-essential motion. The
+ * position tween and the selected-vehicle glow pulse are disabled in that case
+ * (positions snap; the glow stays static), matching the CSS reduced-motion
+ * handling for the rest of the dashboard.
+ */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
 export function FleetMap({
   vehicles,
   selectedId,
@@ -617,7 +631,9 @@ export function FleetMap({
 
     // --- Position tween logic ---
     // For each vehicle, if its position changed, start (or replace) a tween
-    // from the last known position to the new one.
+    // from the last known position to the new one. Skipped entirely under
+    // prefers-reduced-motion: with no tweens, positions snap below.
+    const reduceMotion = prefersReducedMotion();
     const now = performance.now();
     const tweens = tweensRef.current;
     const prevPos = prevPositionsRef.current;
@@ -627,7 +643,7 @@ export function FleetMap({
       const newLat = vehicle.position.lat;
       const prev = prevPos.get(vehicle.id);
 
-      if (prev !== undefined) {
+      if (!reduceMotion && prev !== undefined) {
         const [oldLon, oldLat] = prev;
         // Only tween if the position actually changed.
         if (oldLon !== newLon || oldLat !== newLat) {
@@ -709,8 +725,10 @@ export function FleetMap({
     }
 
     // --- Glow animation ---
-    // Start glow when a vehicle is selected; stop when deselected.
-    if (selectedId !== null) {
+    // Start the pulse when a vehicle is selected; stop when deselected. Under
+    // prefers-reduced-motion the pulse is skipped — the static glow (default
+    // paint values) still marks the selection without animating.
+    if (selectedId !== null && !reduceMotion) {
       if (glowRef.current === null) {
         const state: GlowState = { rafId: 0, phase: 0 };
         glowRef.current = state;

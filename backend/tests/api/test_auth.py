@@ -326,6 +326,24 @@ def test_ws_accepts_a_valid_token_query_parameter() -> None:
         assert "vehicles" in ws.receive_json()
 
 
+def test_ws_connection_emits_per_user_audit_log() -> None:
+    client = _client(auth=True)
+    token = client.post(
+        "/api/auth/login", json={"username": "admin", "password": _PASSWORD}
+    ).json()["token"]
+    handler = _ListHandler()
+    access_log = logging.getLogger("app.api.access")
+    access_log.addHandler(handler)
+    access_log.setLevel(logging.INFO)
+    try:
+        with client as c, c.websocket_connect(f"/ws/positions?token={token}") as ws:
+            ws.receive_json()
+    finally:
+        access_log.removeHandler(handler)
+    messages = [r.getMessage() for r in handler.records]
+    assert any("admin" in m and "WS" in m for m in messages), messages
+
+
 def test_ws_rejects_a_missing_token_when_auth_is_enabled() -> None:
     with _client(auth=True) as client:  # noqa: SIM117
         with pytest.raises(WebSocketDisconnect):
