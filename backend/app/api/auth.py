@@ -35,13 +35,22 @@ import binascii
 import hashlib
 import hmac
 import json
+import logging
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
-from fastapi import Cookie, Header, HTTPException, status
+from fastapi import Cookie, Header, HTTPException, Request, status
+
+from app.observability.principal import set_principal
 
 _ALG = "HS256"
+
+# Audit logger: one INFO line per authenticated request to a gated route,
+# recording who (the token ``sub``) reached which method/path. With
+# ``LOG_FORMAT=json`` the principal also rides on every log line for the
+# request via the ``user`` field (see app.observability.logging).
+_access_log = logging.getLogger("app.api.access")
 
 # Name of the httpOnly cookie the login route sets with the session token, as
 # an XSS-resistant alternative to a client-readable store. The dependency and
@@ -235,20 +244,30 @@ def make_auth_dependency(
     ``now_fn`` supplies the current Unix time, injected so tests need no sleeps.
     The token is read from an ``Authorization: Bearer`` header or, failing that,
     the httpOnly session cookie set by the login route.
+
+    On success the verified username (token ``sub``) is stamped as the request
+    principal and an audit line is logged, so gated access is attributable per
+    user.
     """
 
     async def dependency(
+        request: Request,
         authorization: str | None = Header(default=None),
         session: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
     ) -> None:
         if not secret:
             return
         token = _bearer_token(authorization) or session
-        if not token_is_valid(secret, now_fn(), token):
+        claims = verify_token(secret, token, now_fn()) if token else None
+        if claims is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="invalid or missing session token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        sub = claims.get("sub")
+        if isinstance(sub, str) and sub:
+            set_principal(sub)
+            _access_log.info("%s %s by %s", request.method, request.url.path, sub)
 
     return dependency

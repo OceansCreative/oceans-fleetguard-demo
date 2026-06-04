@@ -6,6 +6,7 @@ import json
 import logging
 
 from app.observability.logging import _JsonFormatter, configure_logging
+from app.observability.principal import _principal_var
 from app.observability.request_id import _request_id_var
 
 
@@ -65,6 +66,24 @@ class TestJsonFormatter:
             assert data["request_id"] == "req-abc-123"
         finally:
             _request_id_var.reset(token)
+
+    def test_user_absent_outside_authenticated_request(self) -> None:
+        token = _principal_var.set(None)
+        try:
+            fmt = _JsonFormatter()
+            data = json.loads(fmt.format(_make_record()))
+            assert "user" not in data
+        finally:
+            _principal_var.reset(token)
+
+    def test_user_present_when_principal_set(self) -> None:
+        token = _principal_var.set("alice")
+        try:
+            fmt = _JsonFormatter()
+            data = json.loads(fmt.format(_make_record()))
+            assert data["user"] == "alice"
+        finally:
+            _principal_var.reset(token)
 
     def test_exc_info_included_when_provided(self) -> None:
         fmt = _JsonFormatter()

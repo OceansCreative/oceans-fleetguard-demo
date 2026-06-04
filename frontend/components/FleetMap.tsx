@@ -24,6 +24,12 @@ const EMPTY: GeoJSON.FeatureCollection = {
   features: [],
 };
 
+/** Vehicles moving above this speed (m/s) use the directional arrow marker. */
+const MOVING_THRESHOLD_MPS = 0.5;
+
+/** Duration of the position-tween animation in milliseconds. */
+const TWEEN_DURATION_MS = 800;
+
 type Theme = "light" | "dark";
 type BasemapId = "light" | "dark" | "aerial";
 
@@ -168,6 +174,10 @@ function circleFeature(
   };
 }
 
+/**
+ * Build GeoJSON features for all vehicles, including the `moving` flag and
+ * `course` property used by the directional arrow layer.
+ */
 function vehicleData(
   vehicles: Vehicle[],
   selectedId: string | null,
@@ -186,6 +196,8 @@ function vehicleData(
           id: vehicle.id,
           color: severity === null ? CALM_COLOR : SEVERITY_COLOR[severity],
           selected: vehicle.id === selectedId,
+          moving: vehicle.position.speed_mps > MOVING_THRESHOLD_MPS,
+          course: vehicle.position.course_deg,
         },
       };
     }),
@@ -203,6 +215,129 @@ function geofenceData(
     type: "FeatureCollection",
     features: [circleFeature(fence.lat, fence.lon, fence.radius_m)],
   };
+}
+
+// ---------------------------------------------------------------------------
+// Arrow icon: a simple SDF chevron/arrow pointing up (north = 0°).
+// Rendered as a 17×17 pixel canvas ImageData so MapLibre can tint it via the
+// `icon-color` paint property when loaded as an SDF image.
+// ---------------------------------------------------------------------------
+
+/** Draw a filled upward-pointing arrow into a canvas and return its ImageData. */
+function buildArrowImageData(size: number): ImageData {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return new ImageData(size, size);
+  }
+  const half = size / 2;
+  const tip = size * 0.1;
+  const base = size * 0.88;
+  const wingLeft = size * 0.15;
+  const wingRight = size * 0.85;
+  const notchY = size * 0.62;
+  const notchDepth = size * 0.78;
+
+  ctx.clearRect(0, 0, size, size);
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.moveTo(half, tip);
+  ctx.lineTo(wingRight, base);
+  ctx.lineTo(half, notchY);
+  ctx.lineTo(wingLeft, base);
+  ctx.lineTo(half, tip);
+  ctx.fill();
+  // Draw the notch by clearing the tail indent
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.beginPath();
+  ctx.moveTo(wingLeft, base);
+  ctx.lineTo(half, notchDepth);
+  ctx.lineTo(wingRight, base);
+  ctx.lineTo(half, notchY);
+  ctx.closePath();
+  ctx.fill();
+
+  return ctx.getImageData(0, 0, size, size);
+}
+
+// ---------------------------------------------------------------------------
+// Position tween: smoothly interpolate each vehicle's lon/lat across frames.
+// ---------------------------------------------------------------------------
+
+interface TweenEntry {
+  fromLon: number;
+  fromLat: number;
+  toLon: number;
+  toLat: number;
+  startTime: number;
+  rafId: number;
+}
+
+/** Linear interpolation between two numbers. */
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+/**
+ * Given a tween entry and the current time, return the interpolated [lon, lat].
+ */
+function tweenCoords(entry: TweenEntry, now: number): [number, number] {
+  const elapsed = now - entry.startTime;
+  const t = Math.min(elapsed / TWEEN_DURATION_MS, 1);
+  // ease-out cubic
+  const eased = 1 - Math.pow(1 - t, 3);
+  return [
+    lerp(entry.fromLon, entry.toLon, eased),
+    lerp(entry.fromLat, entry.toLat, eased),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+// Pulsing glow animation for the selected vehicle.
+// ---------------------------------------------------------------------------
+
+interface GlowState {
+  rafId: number;
+  phase: number;
+}
+
+/** Animate the vehicle-glow layer radius and opacity using requestAnimationFrame. */
+function startGlowAnimation(map: maplibregl.Map, state: GlowState): void {
+  const GLOW_MIN_RADIUS = 16;
+  const GLOW_MAX_RADIUS = 26;
+  const GLOW_MIN_OPACITY = 0.12;
+  const GLOW_MAX_OPACITY = 0.26;
+  const GLOW_PERIOD_MS = 1600;
+
+  function tick(): void {
+    state.phase = (state.phase + 1) % GLOW_PERIOD_MS;
+    const t = (Math.sin((state.phase / GLOW_PERIOD_MS) * 2 * Math.PI) + 1) / 2;
+    const radius = lerp(GLOW_MIN_RADIUS, GLOW_MAX_RADIUS, t);
+    const opacity = lerp(GLOW_MIN_OPACITY, GLOW_MAX_OPACITY, t);
+    if (map.getLayer("vehicle-glow")) {
+      map.setPaintProperty("vehicle-glow", "circle-radius", radius);
+      map.setPaintProperty("vehicle-glow", "circle-opacity", opacity);
+    }
+    state.rafId = requestAnimationFrame(tick);
+  }
+
+  state.rafId = requestAnimationFrame(tick);
+}
+
+/**
+ * True when the user has asked the OS to minimise non-essential motion. The
+ * position tween and the selected-vehicle glow pulse are disabled in that case
+ * (positions snap; the glow stays static), matching the CSS reduced-motion
+ * handling for the rest of the dashboard.
+ */
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
 }
 
 export function FleetMap({
@@ -228,6 +363,13 @@ export function FleetMap({
   const pannedTo = useRef<string | null>(null);
   // Re-attach overlays after a runtime style change (set up by the init effect).
   const reattachRef = useRef<() => void>(() => {});
+
+  // Per-vehicle active tweens (keyed by vehicle id).
+  const tweensRef = useRef<Map<string, TweenEntry>>(new Map());
+  // Previous known positions (keyed by vehicle id), used to start tweens.
+  const prevPositionsRef = useRef<Map<string, [number, number]>>(new Map());
+  // Glow animation state (one RAF loop while a vehicle is selected).
+  const glowRef = useRef<GlowState | null>(null);
 
   useEffect(() => {
     if (container.current === null) return;
@@ -283,9 +425,19 @@ export function FleetMap({
         });
     };
 
+    // Register the SDF arrow icon for moving vehicles.
+    const addArrowIcon = () => {
+      if (!map.hasImage("vehicle-arrow")) {
+        const imageData = buildArrowImageData(17);
+        map.addImage("vehicle-arrow", imageData, { sdf: true });
+      }
+    };
+
     // (Re)add the live overlay sources/layers on top of whichever basemap just
     // loaded. Guarded so it is safe to call after every style change.
     const addOverlays = () => {
+      addArrowIcon();
+
       if (!map.getSource("geofence")) {
         map.addSource("geofence", { type: "geojson", data: EMPTY });
       }
@@ -327,16 +479,52 @@ export function FleetMap({
           },
         });
       }
+      // Stationary vehicles: classic colored dot.
+      if (!map.getLayer("vehicles-stationary")) {
+        map.addLayer({
+          id: "vehicles-stationary",
+          type: "circle",
+          source: "vehicles",
+          filter: ["==", ["get", "moving"], false],
+          paint: {
+            "circle-radius": ["case", ["get", "selected"], 8, 5.5],
+            "circle-color": ["get", "color"],
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": ["case", ["get", "selected"], 3, 1.5],
+          },
+        });
+      }
+      // Moving vehicles: SDF arrow rotated to heading, tinted by severity color.
+      if (!map.getLayer("vehicles-moving")) {
+        map.addLayer({
+          id: "vehicles-moving",
+          type: "symbol",
+          source: "vehicles",
+          filter: ["==", ["get", "moving"], true],
+          layout: {
+            "icon-image": "vehicle-arrow",
+            "icon-size": ["case", ["get", "selected"], 1.55, 1.15],
+            "icon-rotate": ["get", "course"],
+            "icon-rotation-alignment": "map",
+            "icon-allow-overlap": true,
+            "icon-ignore-placement": true,
+          },
+          paint: {
+            "icon-color": ["get", "color"],
+            "icon-opacity": 1,
+          },
+        });
+      }
+      // Keep the legacy "vehicles" layer id alive so click/hover handlers
+      // registered once still fire — they are bound to this id.
       if (!map.getLayer("vehicles")) {
         map.addLayer({
           id: "vehicles",
           type: "circle",
           source: "vehicles",
           paint: {
-            "circle-radius": ["case", ["get", "selected"], 8, 5.5],
-            "circle-color": ["get", "color"],
-            "circle-stroke-color": "#ffffff",
-            "circle-stroke-width": ["case", ["get", "selected"], 3, 1.5],
+            "circle-radius": 0,
+            "circle-opacity": 0,
           },
         });
       }
@@ -360,18 +548,31 @@ export function FleetMap({
 
     map.on("load", reattach);
 
-    // Interaction handlers bind by layer id and survive style swaps, so add
-    // them once.
-    map.on("click", "vehicles", (event) => {
+    // Clicks and hover on both visible layers route through the same handlers.
+    const handleClick = (
+      event: maplibregl.MapMouseEvent & {
+        features?: maplibregl.MapGeoJSONFeature[];
+      },
+    ) => {
       const feature = event.features?.[0];
       if (feature) onSelectRef.current(String(feature.properties.id));
-    });
-    map.on("mouseenter", "vehicles", () => {
+    };
+    const setCursorPointer = () => {
       map.getCanvas().style.cursor = "pointer";
-    });
-    map.on("mouseleave", "vehicles", () => {
+    };
+    const clearCursor = () => {
       map.getCanvas().style.cursor = "";
-    });
+    };
+
+    for (const layerId of [
+      "vehicles-stationary",
+      "vehicles-moving",
+      "vehicles",
+    ]) {
+      map.on("click", layerId, handleClick);
+      map.on("mouseenter", layerId, setCursorPointer);
+      map.on("mouseleave", layerId, clearCursor);
+    }
 
     // If a remote light style is configured but never loads — bad/blocked key,
     // offline network — drop to the bundled offline basemap rather than render
@@ -385,9 +586,23 @@ export function FleetMap({
       }, 8000);
     }
 
+    // Capture refs in local variables so the cleanup closure is stable.
+    const tweens = tweensRef.current;
+    const glow = glowRef;
+
     return () => {
       if (fallbackTimer) clearTimeout(fallbackTimer);
       clearLabels();
+      // Cancel any running tweens.
+      for (const entry of tweens.values()) {
+        cancelAnimationFrame(entry.rafId);
+      }
+      tweens.clear();
+      // Cancel glow animation.
+      if (glow.current !== null) {
+        cancelAnimationFrame(glow.current.rafId);
+        glow.current = null;
+      }
       map.remove();
       mapRef.current = null;
       ready.current = false;
@@ -413,12 +628,90 @@ export function FleetMap({
   useEffect(() => {
     const map = mapRef.current;
     if (map === null || !ready.current) return;
-    (
-      map.getSource("vehicles") as maplibregl.GeoJSONSource | undefined
-    )?.setData(vehicleData(vehicles, selectedId));
+
+    // --- Position tween logic ---
+    // For each vehicle, if its position changed, start (or replace) a tween
+    // from the last known position to the new one. Skipped entirely under
+    // prefers-reduced-motion: with no tweens, positions snap below.
+    const reduceMotion = prefersReducedMotion();
+    const now = performance.now();
+    const tweens = tweensRef.current;
+    const prevPos = prevPositionsRef.current;
+
+    for (const vehicle of vehicles) {
+      const newLon = vehicle.position.lon;
+      const newLat = vehicle.position.lat;
+      const prev = prevPos.get(vehicle.id);
+
+      if (!reduceMotion && prev !== undefined) {
+        const [oldLon, oldLat] = prev;
+        // Only tween if the position actually changed.
+        if (oldLon !== newLon || oldLat !== newLat) {
+          // Cancel any in-flight tween for this vehicle.
+          const existing = tweens.get(vehicle.id);
+          if (existing !== undefined) {
+            cancelAnimationFrame(existing.rafId);
+          }
+          // Start a new tween from the previous (display) position.
+          const entry: TweenEntry = {
+            fromLon: oldLon,
+            fromLat: oldLat,
+            toLon: newLon,
+            toLat: newLat,
+            startTime: now,
+            rafId: 0,
+          };
+          const tick = () => {
+            const source = map.getSource("vehicles") as
+              | maplibregl.GeoJSONSource
+              | undefined;
+            if (!source) return;
+            const frameNow = performance.now();
+            const elapsed = frameNow - entry.startTime;
+            if (elapsed < TWEEN_DURATION_MS) {
+              // Update just this vehicle's position in the current GeoJSON.
+              const { vehicles: v, selectedId: s } = dataRef.current;
+              const tweenedFeatures = buildTweenedData(v, s, tweens, frameNow);
+              source.setData(tweenedFeatures);
+              entry.rafId = requestAnimationFrame(tick);
+            } else {
+              // Tween complete: write the final authoritative position.
+              prevPos.set(vehicle.id, [newLon, newLat]);
+              tweens.delete(vehicle.id);
+              const { vehicles: v, selectedId: s } = dataRef.current;
+              source.setData(buildTweenedData(v, s, tweens, frameNow));
+            }
+          };
+          entry.rafId = requestAnimationFrame(tick);
+          tweens.set(vehicle.id, entry);
+        }
+      }
+      // Always update the known target position so the next delta is correct.
+      prevPos.set(vehicle.id, [newLon, newLat]);
+    }
+    // Prune ids that no longer exist.
+    for (const id of prevPos.keys()) {
+      if (!vehicles.find((v) => v.id === id)) {
+        prevPos.delete(id);
+        const entry = tweens.get(id);
+        if (entry) {
+          cancelAnimationFrame(entry.rafId);
+          tweens.delete(id);
+        }
+      }
+    }
+
+    // If there are no active tweens, update the source immediately.
+    if (tweens.size === 0) {
+      (
+        map.getSource("vehicles") as maplibregl.GeoJSONSource | undefined
+      )?.setData(vehicleData(vehicles, selectedId));
+    }
+
     (
       map.getSource("geofence") as maplibregl.GeoJSONSource | undefined
     )?.setData(geofenceData(vehicles, selectedId));
+
     // Recenter on a newly selected vehicle (not on every position tick).
     if (selectedId !== pannedTo.current) {
       pannedTo.current = selectedId;
@@ -428,6 +721,28 @@ export function FleetMap({
           center: [target.position.lon, target.position.lat],
           duration: 600,
         });
+      }
+    }
+
+    // --- Glow animation ---
+    // Start the pulse when a vehicle is selected; stop when deselected. Under
+    // prefers-reduced-motion the pulse is skipped — the static glow (default
+    // paint values) still marks the selection without animating.
+    if (selectedId !== null && !reduceMotion) {
+      if (glowRef.current === null) {
+        const state: GlowState = { rafId: 0, phase: 0 };
+        glowRef.current = state;
+        startGlowAnimation(map, state);
+      }
+    } else {
+      if (glowRef.current !== null) {
+        cancelAnimationFrame(glowRef.current.rafId);
+        glowRef.current = null;
+        // Reset to default paint values.
+        if (map.getLayer("vehicle-glow")) {
+          map.setPaintProperty("vehicle-glow", "circle-radius", 20);
+          map.setPaintProperty("vehicle-glow", "circle-opacity", 0.18);
+        }
       }
     }
   }, [vehicles, selectedId]);
@@ -459,4 +774,42 @@ export function FleetMap({
       </div>
     </div>
   );
+}
+
+/**
+ * Build a GeoJSON FeatureCollection that applies any in-flight tweens to the
+ * vehicles' current positions, blending smoothly toward the target.
+ */
+function buildTweenedData(
+  vehicles: Vehicle[],
+  selectedId: string | null,
+  tweens: Map<string, TweenEntry>,
+  now: number,
+): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: vehicles.map((vehicle) => {
+      const severity = highestSeverity(vehicle);
+      const tween = tweens.get(vehicle.id);
+      let lon = vehicle.position.lon;
+      let lat = vehicle.position.lat;
+      if (tween !== undefined) {
+        [lon, lat] = tweenCoords(tween, now);
+      }
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [lon, lat],
+        },
+        properties: {
+          id: vehicle.id,
+          color: severity === null ? CALM_COLOR : SEVERITY_COLOR[severity],
+          selected: vehicle.id === selectedId,
+          moving: vehicle.position.speed_mps > MOVING_THRESHOLD_MPS,
+          course: vehicle.position.course_deg,
+        },
+      };
+    }),
+  };
 }

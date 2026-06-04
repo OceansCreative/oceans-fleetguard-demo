@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
@@ -12,7 +13,12 @@ from fastapi.responses import JSONResponse
 
 from app import __version__
 from app.alerts.history import AlertHistory
-from app.api.auth import SESSION_COOKIE_NAME, make_auth_dependency, token_is_valid
+from app.api.auth import (
+    SESSION_COOKIE_NAME,
+    make_auth_dependency,
+    token_is_valid,
+    verify_token,
+)
 from app.api.fleet_service import FleetService
 from app.api.ratelimit import RateLimiter, RateLimitMiddleware, check_rate_limit
 from app.api.routes import create_auth_router, create_router
@@ -22,9 +28,14 @@ from app.config import Settings
 from app.notify.webhook import CriticalAlertNotifier
 from app.observability import ReadinessState, configure_logging
 from app.observability.middleware import RequestIDMiddleware
+from app.observability.principal import set_principal
 
 # WebSocket close code 1013 = "Try Again Later" (RFC 6455 / IANA)
 _WS_TRY_AGAIN_LATER = 1013
+
+# Audit logger shared with the REST gate: one INFO line per authenticated
+# WebSocket connection, recording who (the token ``sub``) opened the stream.
+_ws_access_log = logging.getLogger("app.api.access")
 
 
 async def _reject_ws_rate_limit(websocket: WebSocket, retry_after: int) -> None:
@@ -78,6 +89,25 @@ def _ws_is_authorized(
     return key_ok and token_ok
 
 
+def _ws_principal(
+    settings: Settings, now_fn: Callable[[], int], websocket: WebSocket
+) -> str | None:
+    """Return the verified username (token ``sub``) for an authorized WS, if any.
+
+    ``None`` when the login gate is disabled or the token carries no subject;
+    the API key alone identifies no user.
+    """
+    if not settings.auth_secret:
+        return None
+    params = websocket.query_params
+    token = params.get("token") or websocket.cookies.get(SESSION_COOKIE_NAME)
+    if token is None:
+        return None
+    claims = verify_token(settings.auth_secret, token, now_fn())
+    sub = claims.get("sub") if claims is not None else None
+    return sub if isinstance(sub, str) and sub else None
+
+
 async def _check_ws_access(
     websocket: WebSocket,
     settings: Settings,
@@ -100,6 +130,10 @@ async def _check_ws_access(
         if not allowed:
             await _reject_ws_rate_limit(websocket, retry_after)
             return False
+    user = _ws_principal(settings, now_fn, websocket)
+    if user is not None:
+        set_principal(user)
+        _ws_access_log.info("WS connect %s by %s", websocket.url.path, user)
     return True
 
 

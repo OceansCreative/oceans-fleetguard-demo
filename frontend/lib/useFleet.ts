@@ -9,6 +9,7 @@ import { getToken } from "@/lib/auth";
 import { API_KEY, WS_BASE_URL } from "@/lib/config";
 import { connectLive, type SocketStatus } from "@/lib/liveSocket";
 import { parsePositions } from "@/lib/parse";
+import { appendSpeedSample, type SpeedHistory } from "@/lib/speedHistory";
 import type { Vehicle } from "@/lib/types";
 
 export type ConnectionState = SocketStatus;
@@ -16,6 +17,8 @@ export type ConnectionState = SocketStatus;
 export interface FleetState {
   vehicles: Vehicle[];
   connection: ConnectionState;
+  /** Rolling per-vehicle speed buffer (last 30 samples, oldest-first). */
+  speedHistory: SpeedHistory;
 }
 
 export interface UseFleetOptions {
@@ -37,9 +40,12 @@ export function buildWsUrl(): string {
   return `${WS_BASE_URL}/ws/positions${query ? `?${query}` : ""}`;
 }
 
+const SPEED_HISTORY_CAP = 30;
+
 export function useFleet(options: UseFleetOptions = {}): FleetState {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [connection, setConnection] = useState<ConnectionState>("connecting");
+  const [speedHistory, setSpeedHistory] = useState<SpeedHistory>({});
   // Keep the latest callback in a ref so the connect effect stays mount-once.
   const onUnauthorizedRef = useRef(options.onUnauthorized);
   onUnauthorizedRef.current = options.onUnauthorized;
@@ -55,6 +61,9 @@ export function useFleet(options: UseFleetOptions = {}): FleetState {
       .then((seed) => {
         if (!liveReceived) {
           setVehicles(seed);
+          setSpeedHistory((prev) =>
+            appendSpeedSample(prev, seed, SPEED_HISTORY_CAP),
+          );
         }
       })
       .catch((error: unknown) => {
@@ -74,6 +83,9 @@ export function useFleet(options: UseFleetOptions = {}): FleetState {
           if (next !== null) {
             liveReceived = true;
             setVehicles(next);
+            setSpeedHistory((prev) =>
+              appendSpeedSample(prev, next, SPEED_HISTORY_CAP),
+            );
           }
         } catch {
           /* Ignore malformed frames. */
@@ -87,5 +99,5 @@ export function useFleet(options: UseFleetOptions = {}): FleetState {
     };
   }, []);
 
-  return { vehicles, connection };
+  return { vehicles, connection, speedHistory };
 }

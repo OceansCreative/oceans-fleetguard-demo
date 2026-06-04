@@ -11,6 +11,7 @@ providers, and a hardening checklist.
 1. [Overview & modes](#1-overview--modes)
 2. [Environment setup](#2-environment-setup)
 3. [Authentication (API key)](#3-authentication-api-key)
+   — [3b. User login gate (multi-user)](#3b-user-login-gate-multi-user-opt-in)
 4. [CORS](#4-cors)
 5. [Reverse proxy & TLS](#5-reverse-proxy--tls)
 6. [Notifications](#6-notifications)
@@ -59,6 +60,9 @@ docker compose -f infra/docker-compose.yml up
 | `BACKEND_PORT` | `8000` | |
 | `CORS_ORIGINS` | `http://localhost:3000` | **Must** be set to your real dashboard origin(s). |
 | `API_KEY` | _(empty)_ | **Must** be set to a strong random value for any exposed deployment. |
+| `AUTH_SECRET` | _(empty)_ | Set to enable the user-login gate (signs session tokens). See §3b. |
+| `AUTH_USERS` | _(empty)_ | JSON `{username: password_hash}` for multiple login accounts. See §3b. |
+| `AUTH_USERNAME` / `AUTH_PASSWORD_HASH` | _(empty)_ | Single-user shorthand, merged into `AUTH_USERS`. |
 | `NOTIFY_WEBHOOK_URL` | _(empty)_ | Optional. Receives CRITICAL alert POSTs. |
 | `TRACCAR_BASE_URL` | `http://traccar:8082` | Used when `MOCK_MODE=false`. |
 | `TRACCAR_WS_URL` | `ws://traccar:8082/api/socket` | Used when `MOCK_MODE=false` and `TRACCAR_TRANSPORT=ws`. |
@@ -131,6 +135,38 @@ access but is not a secret.
   API access).
 - Consider not setting `NEXT_PUBLIC_API_KEY` at all and using a
   backend-for-frontend that injects the backend key server-side.
+
+### 3b. User login gate (multi-user, opt-in)
+
+A **second, independent** gate sits in front of `/api` and `/ws`: a username +
+password login that issues a signed (stdlib HS256) session token. It is OFF
+until `AUTH_SECRET` is set, and composes with the API key (when both are set,
+both must pass).
+
+**Configure accounts.** Use `AUTH_USERS`, a JSON object mapping each username to
+a password hash. Generate the hashes (salted scrypt) with the bundled CLI, which
+prompts for each password so it never lands in your shell history:
+
+```bash
+cd backend && uv run python -m app.tools.gen_auth_users alice bob
+# Password for alice: …
+# Password for bob: …
+# AUTH_USERS={"alice":"scrypt$...","bob":"scrypt$..."}
+```
+
+Paste the printed line into `.env`, and set a high-entropy `AUTH_SECRET`
+(`openssl rand -hex 32`). The legacy single-user `AUTH_USERNAME` /
+`AUTH_PASSWORD_HASH` pair still works and is merged into the account map.
+
+**Hardening notes.**
+- Login is **user-enumeration resistant**: it hashes unconditionally and
+  compares in constant time, so a wrong username and a wrong password are
+  indistinguishable by timing or response.
+- Keep `AUTH_SECRET` and the password hashes off the browser — these are backend
+  secrets (unlike `NEXT_PUBLIC_*`).
+- Every authenticated `/api` request emits a **per-user audit log** line, and
+  the username rides on each JSON log record for the request (`user` field) —
+  set `LOG_FORMAT=json` to capture it in your log pipeline (see §8).
 
 ---
 
@@ -319,6 +355,11 @@ Work through this list before exposing the stack to the internet:
 
 - [ ] **API key** — set `API_KEY` to a cryptographically random value
       (`openssl rand -hex 32`); set the same value as `NEXT_PUBLIC_API_KEY`.
+- [ ] **User login** — set `AUTH_SECRET` and configure accounts via
+      `AUTH_USERS` (generate hashes with `python -m app.tools.gen_auth_users`)
+      to require a per-user login in addition to the API key. See §3b.
+- [ ] **Audit logging** — set `LOG_FORMAT=json` so the per-user audit trail
+      (the `user` field) is captured by your log pipeline.
 - [ ] **PostgreSQL password** — change `POSTGRES_PASSWORD` from the default
       `change-me-in-local-env` to a strong password.
 - [ ] **CORS origins** — set `CORS_ORIGINS` to the exact origin(s) of your
