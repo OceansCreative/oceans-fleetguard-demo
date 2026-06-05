@@ -44,6 +44,9 @@ export type MessageKey =
   | "banner.theftAlert"
   | "banner.theftAlertPlural"
   | "banner.withActiveTheftAlerts"
+  | "alert.criticalTitle"
+  | "alert.locate"
+  | "alert.dismiss"
   | "map.light"
   | "map.dark"
   | "map.aerial"
@@ -99,6 +102,9 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "banner.theftAlert": "vehicle with active theft alerts",
     "banner.theftAlertPlural": "vehicles with active theft alerts",
     "banner.withActiveTheftAlerts": "with active theft alerts",
+    "alert.criticalTitle": "Theft alert",
+    "alert.locate": "Locate",
+    "alert.dismiss": "Dismiss",
     "map.light": "Light",
     "map.dark": "Dark",
     "map.aerial": "Aerial",
@@ -150,6 +156,9 @@ const messages: Record<Lang, Record<MessageKey, string>> = {
     "banner.theftAlert": "台に盗難アラートがあります",
     "banner.theftAlertPlural": "台に盗難アラートがあります",
     "banner.withActiveTheftAlerts": "に盗難アラートがあります",
+    "alert.criticalTitle": "盗難アラート",
+    "alert.locate": "地図で表示",
+    "alert.dismiss": "閉じる",
     "map.light": "ライト",
     "map.dark": "ダーク",
     "map.aerial": "航空写真",

@@ -1,16 +1,24 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  criticalVehicleIds,
+  newCriticalAlerts,
+} from "@/lib/alertNotifications";
 import { isAuthed, logout } from "@/lib/auth";
 import { useFleet } from "@/lib/useFleet";
 import { useLang, useT } from "@/lib/i18n";
 import { AlertHistoryPanel } from "@/components/AlertHistoryPanel";
 import { AlertsBanner } from "@/components/AlertsBanner";
+import { AlertToasts, type ActiveToast } from "@/components/AlertToasts";
 import { LoginForm } from "@/components/LoginForm";
 import { VehicleDetail } from "@/components/VehicleDetail";
 import { VehicleList } from "@/components/VehicleList";
+
+/** How long a critical-alert toast stays on screen before auto-dismissing. */
+const TOAST_TTL_MS = 8000;
 
 // MapLibre touches `window`, so the map must be client-only (no SSR).
 const FleetMap = dynamic(
@@ -37,6 +45,49 @@ export function Dashboard(): React.JSX.Element {
   // Only offer "Sign out" when a session token is actually in use; the keyless
   // quickstart (login disabled) shows nothing extra.
   const showLogout = isAuthed();
+
+  // Active-notification toasts for vehicles that *just* turned critical, so a
+  // theft alert grabs attention instead of only updating the passive banner.
+  const [toasts, setToasts] = useState<ActiveToast[]>([]);
+  const prevCriticalRef = useRef<Set<string>>(new Set());
+  const toastSeqRef = useRef(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  useEffect(() => {
+    const fresh = newCriticalAlerts(prevCriticalRef.current, vehicles);
+    prevCriticalRef.current = criticalVehicleIds(vehicles);
+    if (fresh.length === 0) return;
+    const added: ActiveToast[] = fresh.map((alert) => ({
+      id: `toast-${(toastSeqRef.current += 1)}`,
+      ...alert,
+    }));
+    setToasts((current) => [...current, ...added]);
+    for (const toast of added) {
+      const timer = setTimeout(() => {
+        setToasts((current) => current.filter((item) => item.id !== toast.id));
+      }, TOAST_TTL_MS);
+      timersRef.current.push(timer);
+    }
+  }, [vehicles]);
+
+  // Clear any pending auto-dismiss timers on unmount.
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, []);
+
+  const dismissToast = useCallback((toastId: string) => {
+    setToasts((current) => current.filter((item) => item.id !== toastId));
+  }, []);
+
+  const locateVehicle = useCallback((vehicleId: string) => {
+    setSelectedId(vehicleId);
+    setToasts((current) =>
+      current.filter((item) => item.vehicleId !== vehicleId),
+    );
+  }, []);
 
   if (needsLogin) {
     // Remount the dashboard on success so useFleet re-seeds with the token.
@@ -120,6 +171,12 @@ export function Dashboard(): React.JSX.Element {
           <AlertHistoryPanel />
         </aside>
       </div>
+
+      <AlertToasts
+        toasts={toasts}
+        onLocate={locateVehicle}
+        onDismiss={dismissToast}
+      />
     </div>
   );
 }
