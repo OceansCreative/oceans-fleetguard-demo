@@ -894,12 +894,114 @@ button {
   transform: scale(0.97);
 }
 
+/* ---- Critical-alert toasts --------------------------------------- */
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(360px, calc(100vw - 36px));
+}
+
+.toast {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--critical);
+  animation: toast-in 0.28s ease;
+}
+
+.toast--critical {
+  background: var(--critical-soft);
+  border-color: var(--critical);
+}
+
+.toast-icon {
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.toast-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toast-title {
+  font-weight: 700;
+  color: var(--critical);
+  font-size: 14px;
+}
+
+.toast-reason {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.toast-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.toast-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    transform 0.1s ease;
+}
+
+.toast-btn:hover {
+  background: var(--surface-hover);
+}
+
+.toast-btn:active {
+  transform: scale(0.95);
+}
+
+.toast-btn--primary {
+  background: var(--critical);
+  border-color: var(--critical);
+  color: #ffffff;
+}
+
+.toast-btn--primary:hover {
+  background: #d83a41;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* ---- Respect prefers-reduced-motion ------------------------------ */
 @media (prefers-reduced-motion: reduce) {
   /* Disable all non-essential keyframe animations */
   .banner,
   .vrow-alerts,
   .detail,
+  .toast,
   .conn--live .conn-dot {
     animation: none;
   }
@@ -915,7 +1017,9 @@ button {
   .map-switch__btn,
   .map-switch__btn:active,
   .login-submit,
-  .login-submit:active {
+  .login-submit:active,
+  .toast-btn,
+  .toast-btn:active {
     transition: none;
     transform: none;
   }
